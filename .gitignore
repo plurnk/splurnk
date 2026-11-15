@@ -1,0 +1,17 @@
+node_modules/
+dist/
+data/
+.env
+.env.*
+!.env.defaults
+!.env.example
+AGENTS.local.md
+.claude/
+*.tsbuildinfo
+*.tgz
+*.db
+*.db-shm
+*.db-wal
+playwright-report*/
+test-results*/
+.playwright-mcp/

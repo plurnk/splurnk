@@ -1,0 +1,56 @@
+{
+    "name": "@plurnk/splurnk",
+    "version": "0.1.0",
+    "description": "Social task coordination for group chats, powered by Plurnk.",
+    "type": "module",
+    "license": "MIT",
+    "engines": {
+        "node": ">=26"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "homepage": "https://github.com/plurnk/splurnk#readme",
+    "bugs": {
+        "url": "https://github.com/plurnk/splurnk/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/splurnk.git"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        ".env.defaults",
+        "config/plurnk.env",
+        "dist/**/*",
+        "README.md",
+        "SPEC.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "dev": "node --env-file=.env.defaults --env-file-if-exists=.env --env-file-if-exists=.env.local --env-file-if-exists=.env.keys --watch --watch-path=src src/main.ts",
+        "start": "node --env-file=.env.defaults --env-file-if-exists=.env --env-file-if-exists=.env.local --env-file-if-exists=.env.keys dist/main.js",
+        "build:clean": "rm -rf dist",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:clean && npm run build:dist",
+        "test:lint": "plurnk-spec-check --allowance scripts/spec-witness-allowance.json && node scripts/check-sql-boundary.ts && tsc --noEmit",
+        "test:unit": "node --env-file=.env.defaults --experimental-test-coverage --test-coverage-include-all '--test-coverage-include=src/**' '--test-coverage-exclude=src/**/*.test.ts' '--test-coverage-exclude=src/main.ts' --test 'src/**/*.test.ts'",
+        "test": "npm run build && npm run test:lint && npm run test:unit",
+        "prepack": "npm run build",
+        "prepublishOnly": "npm audit --audit-level=moderate && npm test"
+    },
+    "dependencies": {
+        "@plurnk/plurnk-meta": "^2.2.2"
+    },
+    "devDependencies": {
+        "@plurnk/plurnk-spec-check": "^0.2.1",
+        "@types/node": "^26.6.6",
+        "typescript": "^7.0.2"
+    }
+}
