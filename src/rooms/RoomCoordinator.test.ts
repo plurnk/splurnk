@@ -300,7 +300,7 @@ describe("RoomCoordinator multi-room tenancy", () => {
         assert.equal(migratedBeta.externalChatId, "-1002002999");
         assert.equal(migratedBeta.plurnkWorkspace, wsBeta);
         assert.equal(adapter.directMessages.length, 1);
-        assert.match(adapter.directMessages[0]?.text ?? "", /outbound notifications/u);
+        assert.match(adapter.directMessages[0]?.text ?? "", /Outbound notifications only/u);
 
         // 8. Bot removal deactivates Beta completely.
         await coordinator.handleInboundEvents([

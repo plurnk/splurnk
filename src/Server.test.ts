@@ -69,7 +69,6 @@ describe("SplurnkServer", () => {
         assert.equal(home.headers.get("content-type"), "text/html; charset=utf-8");
         const html = await home.text();
         assert.match(html, /@splurnkbot/u);
-        assert.match(html, /https:\/\/dev\.splurnk\.app/u);
 
         const custom = await fetch(`${baseUrl}/custom`);
         assert.equal(custom.status, 204);

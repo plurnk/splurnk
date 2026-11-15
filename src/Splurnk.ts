@@ -381,7 +381,6 @@ export default class Splurnk {
             if (session === null) {
                 const returnTo = normalizeReturnTo(`${pathname}${parsedUrl.search}`);
                 const html = documents.renderSignIn({
-                    config: this.#config,
                     oidcConfigured: sessions.oidcConfigured,
                     returnTo,
                 });
@@ -428,7 +427,6 @@ export default class Splurnk {
                         ? await rooms.isMemberEnrolled(session.member.id, room.id)
                         : false;
                 const html = documents.renderRoomJoin({
-                    config: this.#config,
                     room,
                     joinCode,
                     oidcConfigured: sessions.oidcConfigured,

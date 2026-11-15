@@ -1,17 +1,27 @@
 {
+    "id": "/",
     "name": "Splurnk",
     "short_name": "Splurnk",
-    "description": "Social task coordination for group chats, powered by Plurnk.",
+    "description": "Splurnk task workspace.",
+    "lang": "en",
+    "dir": "ltr",
     "start_url": "/",
+    "scope": "/",
     "display": "standalone",
-    "background_color": "#ffffff",
     "theme_color": "#148800",
+    "background_color": "#ffffff",
     "icons": [
         {
             "src": "/icons/splurnk.svg",
             "sizes": "any",
             "type": "image/svg+xml",
             "purpose": "any"
+        },
+        {
+            "src": "/icons/splurnk-maskable.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "maskable"
         }
     ]
 }
