@@ -1,0 +1,46 @@
+/* {§splurnk-http-lifecycle} Brand #148800 palette and light/dark custom property tokens. */
+:root {
+    --pico-line-height: 1.4;
+    --splurnk-accent-surface: color-mix(in srgb, var(--pico-primary) 12%, var(--pico-card-background-color));
+    --splurnk-accent-border: color-mix(in srgb, var(--pico-primary) 28%, var(--pico-card-border-color));
+}
+
+:root:not([data-theme="dark"]),
+[data-theme="light"] {
+    --pico-primary: #148800;
+    --pico-primary-underline: rgb(20 136 0 / 50%);
+    --pico-primary-hover: #106d00;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+        --pico-primary: #4eb31b;
+        --pico-primary-underline: rgb(78 179 27 / 50%);
+        --pico-primary-hover: #72cc46;
+    }
+}
+
+[data-theme],
+:root:not([data-theme]),
+:root[data-theme] {
+    --pico-primary-background: #148800;
+    --pico-primary-hover-background: #106d00;
+    --pico-primary-focus: rgb(20 136 0 / 50%);
+    --pico-primary-inverse: #fff;
+    --pico-text-selection-color: rgb(20 136 0 / 25%);
+}
+
+[data-avatar-initials] {
+    background-color: var(--splurnk-accent-surface);
+    border: var(--pico-border-width) solid var(--splurnk-accent-border);
+    color: var(--pico-primary);
+}
+
+header nav button[data-signout] {
+    --pico-primary-background: var(--pico-secondary-background);
+    --pico-primary-border: var(--pico-secondary-border);
+    --pico-primary-hover-background: var(--pico-secondary-hover-background);
+    --pico-primary-hover-border: var(--pico-secondary-hover-border);
+    --pico-primary-inverse: var(--pico-secondary-inverse);
+    --pico-primary-focus: var(--pico-secondary-focus);
+}

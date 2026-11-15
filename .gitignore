@@ -12,6 +12,9 @@ AGENTS.local.md
 *.db
 *.db-shm
 *.db-wal
+SqlRite.d.ts
+web/styles/app-vendor.css
+web/public/vendor/*
 playwright-report*/
 test-results*/
 .playwright-mcp/

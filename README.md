@@ -27,6 +27,8 @@ cp .env.example .env.keys
 chmod 600 .env.keys
 ```
 
+To enable web sign-in (`{§splurnk-identity-oidc}`), register `<SPLURNK_PUBLIC_ORIGIN>/auth/callback` under **Bot Settings → Web Login** in `@BotFather` and place `TELEGRAM_OIDC_CLIENT_ID`, `TELEGRAM_OIDC_CLIENT_SECRET`, and a random `SPLURNK_SESSION_SECRET` in `.env.keys`.
+
 Validate the dedicated Plurnk daemon configuration against an installed `plurnk-service`:
 
 ```sh
