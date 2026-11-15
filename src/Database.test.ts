@@ -74,6 +74,7 @@ describe("Database", () => {
             avatarUrl: null,
             timezone: "America/New_York",
             plurnkWorkspace: "tg-100998877",
+            joinCode: "ops-crew-join-code-0123456789abcdef",
         });
         assert.ok(room);
 
@@ -82,6 +83,7 @@ describe("Database", () => {
             memberId: alice.id,
             role: "admin",
             active: 1,
+            verifiedAt: Date.now(),
         });
 
         const memberRooms = await secondOpen.listMemberRooms.all<{

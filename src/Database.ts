@@ -1,4 +1,4 @@
-// {§splurnk-configuration} {§splurnk-identity-oidc}
+// {§splurnk-configuration} {§splurnk-identity-oidc} {§splurnk-chat-seam}
 // SqlRite persistence opener resolving package-relative migration and query directories.
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -18,6 +18,18 @@ export interface MemberRecord {
     readonly isAgent: boolean;
 }
 
+export interface RoomRecord {
+    readonly id: number;
+    readonly provider: string;
+    readonly externalChatId: string;
+    readonly title: string;
+    readonly avatarUrl: string | null;
+    readonly timezone: string;
+    readonly plurnkWorkspace: string;
+    readonly joinCode: string | null;
+    readonly active: boolean;
+}
+
 export interface EnrolledRoom {
     readonly id: number;
     readonly provider: string;
@@ -26,6 +38,12 @@ export interface EnrolledRoom {
     readonly avatarUrl: string | null;
     readonly timezone: string;
     readonly plurnkWorkspace: string;
+    readonly joinCode: string | null;
+    readonly role: "admin" | "member";
+    readonly verifiedAt: number;
+}
+
+export interface RoomRosterMember extends MemberRecord {
     readonly role: "admin" | "member";
 }
 

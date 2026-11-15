@@ -1,4 +1,4 @@
-/* {§splurnk-identity-oidc} Attribute-driven visual state for authentication and view modes. */
+/* {§splurnk-identity-oidc} {§splurnk-chat-seam} Attribute-driven visual state for authentication, room selection, and view modes. */
 body[data-auth-state="signed-out"] [data-signed-in-only] {
     display: none;
 }
@@ -10,6 +10,13 @@ body[data-view="chat"] [data-panel="tasks"] {
 
 [data-mode-switch] a[aria-current="page"] {
     border-block-end-color: var(--pico-primary);
+    color: var(--pico-primary);
+    font-weight: 700;
+}
+
+[data-room-link][aria-current="true"] {
+    background-color: var(--splurnk-accent-surface);
+    border-color: var(--splurnk-accent-border);
     color: var(--pico-primary);
     font-weight: 700;
 }

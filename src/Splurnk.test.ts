@@ -5,10 +5,12 @@ import type { AddressInfo } from "node:net";
 import { describe, test } from "node:test";
 import { brotliDecompressSync } from "node:zlib";
 import {
+    deriveTelegramWebhookSecret,
     normalizeReturnTo,
     readConfig,
     readCookie,
     Splurnk,
+    TelegramChatAdapter,
     type ProblemDetails,
 } from "./index.ts";
 
@@ -128,6 +130,8 @@ function makeEnv(overrides: Record<string, string> = {}): Record<string, string>
         SPLURNK_BOT_HANDLE: "splurnk_dev_bot",
         SPLURNK_TELEGRAM_OIDC_ISSUER: "https://oauth.telegram.org",
         SPLURNK_TELEGRAM_API_ORIGIN: "https://api.telegram.org",
+        SPLURNK_TELEGRAM_SET_WEBHOOK: "0",
+        SPLURNK_ROOM_VERIFY_TTL_SEC: "300",
         SPLURNK_LOGIN_TTL_SEC: "600",
         SPLURNK_SESSION_TTL_SEC: "2592000",
         ...overrides,
@@ -339,6 +343,7 @@ describe("Splurnk application runtime", () => {
             avatarUrl: null,
             timezone: "UTC",
             plurnkWorkspace: "tg-10012345",
+            joinCode: "orbital-join-code-0123456789abcdef",
         });
         assert.ok(room);
         await app.db.upsertRoomMember.run({
@@ -346,6 +351,7 @@ describe("Splurnk application runtime", () => {
             memberId: member.id,
             role: "admin",
             active: 1,
+            verifiedAt: Date.now(),
         });
 
         const chatBoardRes = await fetch(`${baseUrl}/?view=chat`, {
@@ -493,5 +499,313 @@ describe("Splurnk application runtime", () => {
         // Stopping a second time is idempotent, and restarting after stop is rejected.
         await app.stop();
         await assert.rejects(() => app.start(), /cannot restart after stopping/u);
+    });
+
+    test("{§splurnk-chat-seam} {§splurnk-identity-oidc} enforces HTTP multi-room isolation, verified join links, admin link rotation, and Telegram webhook filtering", async (t) => {
+        let activeProfile: MockOidcProfile = {
+            sub: "7001",
+            name: "Alice Founder",
+            preferred_username: "alice",
+        };
+        const oidc = await startMockOidcServer(() => activeProfile);
+        t.after(() => oidc.stop());
+
+        const botToken = "888777:TEST_BOT_SECRET";
+        const publicOrigin = "https://dev.splurnk.app";
+        const webhookSecret = deriveTelegramWebhookSecret(botToken, publicOrigin);
+        const setWebhookCalls: Array<Record<string, unknown>> = [];
+        const sentMessages: Array<Record<string, unknown>> = [];
+        const liveGroupRoles = new Map<string, string>([
+            ["-10077:7001", "administrator"],
+            ["-10077:7002", "member"],
+            ["-10088:8001", "creator"],
+        ]);
+
+        const telegramAdapter = new TelegramChatAdapter({
+            apiOrigin: "https://api.telegram.org",
+            botToken,
+            botHandle: "splurnk_dev_bot",
+            publicOrigin,
+            fetchImpl: async (input, init) => {
+                const method = String(input).split("/").at(-1) ?? "";
+                const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+                if (method === "setWebhook") {
+                    setWebhookCalls.push(body);
+                    return new Response(JSON.stringify({ ok: true, result: true }), { status: 200 });
+                }
+                if (method === "getChatAdministrators") {
+                    const chatId = String(body.chat_id);
+                    const admins =
+                        chatId === "-10077"
+                            ? [{ status: "administrator", user: { id: 7001, is_bot: false, first_name: "Alice" } }]
+                            : [{ status: "creator", user: { id: 8001, is_bot: false, first_name: "Bob" } }];
+                    return new Response(JSON.stringify({ ok: true, result: admins }), { status: 200 });
+                }
+                if (method === "getChatMember") {
+                    const status = liveGroupRoles.get(`${String(body.chat_id)}:${String(body.user_id)}`);
+                    if (!status) {
+                        return new Response(
+                            JSON.stringify({ ok: false, error_code: 400, description: "Bad Request: user not found" }),
+                            { status: 400 },
+                        );
+                    }
+                    return new Response(JSON.stringify({ ok: true, result: { status } }), { status: 200 });
+                }
+                if (method === "sendMessage") {
+                    sentMessages.push(body);
+                    return new Response(JSON.stringify({ ok: true, result: { message_id: 99 } }), { status: 200 });
+                }
+                return new Response(JSON.stringify({ ok: true, result: true }), { status: 200 });
+            },
+        });
+
+        const mentionedPrompts: string[] = [];
+        const config = readConfig(
+            makeEnv({
+                SPLURNK_TELEGRAM_OIDC_ISSUER: oidc.issuer,
+                SPLURNK_TELEGRAM_SET_WEBHOOK: "1",
+                SPLURNK_ROOM_VERIFY_TTL_SEC: "1",
+                TELEGRAM_OIDC_CLIENT_ID: "splurnk-client",
+                TELEGRAM_OIDC_CLIENT_SECRET: "splurnk-secret",
+                TELEGRAM_BOT_TOKEN: botToken,
+                SPLURNK_SESSION_SECRET: "multi-room-test-secret",
+            }),
+        );
+        const app = new Splurnk({
+            config,
+            chatAdapter: telegramAdapter,
+            onRoomMention: async (ctx) => {
+                mentionedPrompts.push(`${ctx.room.title}:${ctx.promptText}`);
+                return `Ack ${ctx.promptText}`;
+            },
+        });
+        assert.throws(() => app.rooms, /not initialized/u);
+        const baseUrl = await app.start();
+        t.after(() => app.stop());
+
+        assert.equal(setWebhookCalls.length, 1);
+        assert.equal(setWebhookCalls[0]?.url, "https://dev.splurnk.app/webhooks/telegram");
+
+        // 1. Webhook rejects wrong method, forged secret, wrong media type, and malformed JSON.
+        assert.equal((await fetch(`${baseUrl}/webhooks/telegram`)).status, 405);
+        assert.equal(
+            (
+                await fetch(`${baseUrl}/webhooks/telegram`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: "{}",
+                })
+            ).status,
+            401,
+        );
+        assert.equal(
+            (
+                await fetch(`${baseUrl}/webhooks/telegram`, {
+                    method: "POST",
+                    headers: {
+                        "X-Telegram-Bot-Api-Secret-Token": webhookSecret,
+                        "Content-Type": "text/plain",
+                    },
+                    body: "{}",
+                })
+            ).status,
+            415,
+        );
+        assert.equal(
+            (
+                await fetch(`${baseUrl}/webhooks/telegram`, {
+                    method: "POST",
+                    headers: {
+                        "X-Telegram-Bot-Api-Secret-Token": webhookSecret,
+                        "Content-Type": "application/json",
+                    },
+                    body: "{not-json",
+                })
+            ).status,
+            400,
+        );
+
+        // 2. Enroll two separate Telegram groups via webhook + verify non-mention chatter is ignored.
+        const postWebhook = async (payload: Record<string, unknown>): Promise<Response> =>
+            await fetch(`${baseUrl}/webhooks/telegram`, {
+                method: "POST",
+                headers: {
+                    "X-Telegram-Bot-Api-Secret-Token": webhookSecret,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(payload),
+            });
+
+        assert.equal(
+            (
+                await postWebhook({
+                    update_id: 100,
+                    my_chat_member: {
+                        chat: { id: -10077, type: "supergroup", title: "Room Seven" },
+                        from: { id: 7001, is_bot: false, first_name: "Alice" },
+                        new_chat_member: { status: "member", user: { id: 1, is_bot: true } },
+                    },
+                })
+            ).status,
+            200,
+        );
+        assert.equal(
+            (
+                await postWebhook({
+                    update_id: 101,
+                    my_chat_member: {
+                        chat: { id: -10088, type: "supergroup", title: "Room Eight" },
+                        from: { id: 8001, is_bot: false, first_name: "Bob" },
+                        new_chat_member: { status: "member", user: { id: 1, is_bot: true } },
+                    },
+                })
+            ).status,
+            200,
+        );
+        assert.equal(sentMessages.length, 2);
+
+        // Unmentioned message does not trigger mention handler or send any message.
+        await postWebhook({
+            update_id: 102,
+            message: {
+                message_id: 50,
+                from: { id: 7001, is_bot: false, first_name: "Alice" },
+                chat: { id: -10077, type: "supergroup", title: "Room Seven" },
+                text: "Casual chatter without bot tag",
+            },
+        });
+        assert.equal(mentionedPrompts.length, 0);
+        assert.equal(sentMessages.length, 2);
+
+        // Explicit @splurnk_dev_bot mention dispatches and replies!
+        await postWebhook({
+            update_id: 103,
+            message: {
+                message_id: 51,
+                from: { id: 7001, is_bot: false, first_name: "Alice" },
+                chat: { id: -10077, type: "supergroup", title: "Room Seven" },
+                text: "@splurnk_dev_bot plan groceries",
+                entities: [{ type: "mention", offset: 0, length: 16 }],
+            },
+        });
+        assert.deepEqual(mentionedPrompts, ["Room Seven:plan groceries"]);
+        assert.equal(sentMessages.at(-1)?.text, "Ack plan groceries");
+
+        // Extract join URLs emitted in welcome messages.
+        const joinSevenMatch = /\/rooms\/join\/([\w-]+)/u.exec(String(sentMessages[0]?.text ?? ""));
+        const joinEightMatch = /\/rooms\/join\/([\w-]+)/u.exec(String(sentMessages[1]?.text ?? ""));
+        assert.ok(joinSevenMatch && joinEightMatch);
+        const joinCodeSeven = joinSevenMatch[1]!;
+        const joinCodeEight = joinEightMatch[1]!;
+
+        // Helper to sign in a user via OIDC and return their session cookie + CSRF token.
+        const signInAs = async (profile: MockOidcProfile): Promise<{ cookie: string; csrf: string }> => {
+            activeProfile = profile;
+            const begin = await fetch(`${baseUrl}/auth/login`, { redirect: "manual" });
+            const txPair = (begin.headers.getSetCookie()[0] ?? "").split(";")[0] ?? "";
+            const loc = new URL(begin.headers.get("location") ?? "");
+            oidc.setNextNonce(loc.searchParams.get("nonce") ?? "");
+            const finish = await fetch(
+                `${baseUrl}/auth/callback?code=ok&state=${encodeURIComponent(loc.searchParams.get("state") ?? "")}`,
+                { headers: { Cookie: txPair }, redirect: "manual" },
+            );
+            const cookie = (finish.headers.getSetCookie()[1] ?? "").split(";")[0] ?? "";
+            const homeHtml = await (await fetch(`${baseUrl}/`, { headers: { Cookie: cookie } })).text();
+            const csrf = /name="_csrf" value="([^"]+)"/u.exec(homeHtml)?.[1] ?? "";
+            return { cookie, csrf };
+        };
+
+        const aliceAuth = await signInAs({ sub: "7001", name: "Alice Founder", preferred_username: "alice" });
+
+        // 3. Alice sees Room Seven, NOT Room Eight; probing ?room=<RoomEight.id> or malformed ?room=abc fails closed!
+        const roomEightRow = await app.db.getRoomByJoinCode.get<{ id: number }>({ joinCode: joinCodeEight });
+        const roomSevenRow = await app.db.getRoomByJoinCode.get<{ id: number }>({ joinCode: joinCodeSeven });
+        assert.ok(roomSevenRow && roomEightRow);
+
+        assert.equal(
+            (await fetch(`${baseUrl}/?room=abc`, { headers: { Cookie: aliceAuth.cookie } })).status,
+            400,
+        );
+        assert.equal(
+            (await fetch(`${baseUrl}/?room=${roomEightRow.id}`, { headers: { Cookie: aliceAuth.cookie } })).status,
+            404,
+        );
+        const aliceRoomSevenHtml = await (
+            await fetch(`${baseUrl}/?room=${roomSevenRow.id}`, { headers: { Cookie: aliceAuth.cookie } })
+        ).text();
+        assert.match(aliceRoomSevenHtml, /Room Seven/u);
+        assert.doesNotMatch(aliceRoomSevenHtml, /Room Eight/u);
+        assert.match(aliceRoomSevenHtml, /Rotate join link/u);
+
+        // Alice attempting to join Room Eight via its join link is rejected (403 not-room-member).
+        const aliceJoinEight = await fetch(`${baseUrl}/rooms/join/${joinCodeEight}`, {
+            method: "POST",
+            headers: {
+                Cookie: aliceAuth.cookie,
+                Origin: publicOrigin,
+                "Sec-Fetch-Site": "same-origin",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({ _csrf: aliceAuth.csrf }),
+            redirect: "manual",
+        });
+        assert.equal(aliceJoinEight.status, 403);
+
+        // 4. Signed-out visitor hitting GET /rooms/join/:code sees OIDC prompt with ?return=...
+        const signedOutJoinRes = await fetch(`${baseUrl}/rooms/join/${joinCodeSeven}`);
+        assert.equal(signedOutJoinRes.status, 200);
+        assert.match(await signedOutJoinRes.text(), /Sign in with Telegram to join/u);
+
+        // 5. Carol (member 7002 of Room Seven) signs in, views join card, joins Room Seven, cannot rotate link (403).
+        const carolAuth = await signInAs({ sub: "7002", name: "Carol Peer", preferred_username: "carol" });
+        const carolJoinPage = await (
+            await fetch(`${baseUrl}/rooms/join/${joinCodeSeven}`, { headers: { Cookie: carolAuth.cookie } })
+        ).text();
+        assert.match(carolJoinPage, /Verify membership &amp; join Room Seven/u);
+
+        const carolJoinPost = await fetch(`${baseUrl}/rooms/join/${joinCodeSeven}`, {
+            method: "POST",
+            headers: {
+                Cookie: carolAuth.cookie,
+                Origin: publicOrigin,
+                "Sec-Fetch-Site": "same-origin",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({ _csrf: carolAuth.csrf }),
+            redirect: "manual",
+        });
+        assert.equal(carolJoinPost.status, 303);
+        assert.equal(carolJoinPost.headers.get("location"), `/?room=${roomSevenRow.id}`);
+
+        const carolRotateAttempt = await fetch(`${baseUrl}/rooms/${roomSevenRow.id}/rotate-join-link`, {
+            method: "POST",
+            headers: {
+                Cookie: carolAuth.cookie,
+                Origin: publicOrigin,
+                "Sec-Fetch-Site": "same-origin",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({ _csrf: carolAuth.csrf }),
+            redirect: "manual",
+        });
+        assert.equal(carolRotateAttempt.status, 403);
+
+        // 6. Alice (admin of Room Seven) rotates the join link -> old joinCode returns 404!
+        const aliceRotate = await fetch(`${baseUrl}/rooms/${roomSevenRow.id}/rotate-join-link`, {
+            method: "POST",
+            headers: {
+                Cookie: aliceAuth.cookie,
+                Origin: publicOrigin,
+                "Sec-Fetch-Site": "same-origin",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({ _csrf: aliceAuth.csrf }),
+            redirect: "manual",
+        });
+        assert.equal(aliceRotate.status, 303);
+        assert.equal(
+            (await fetch(`${baseUrl}/rooms/join/${joinCodeSeven}`)).status,
+            404,
+        );
     });
 });

@@ -15,6 +15,8 @@ const BASE_ENV: Environment = Object.freeze({
     SPLURNK_BOT_HANDLE: "splurnkbot",
     SPLURNK_TELEGRAM_OIDC_ISSUER: "https://oauth.telegram.org",
     SPLURNK_TELEGRAM_API_ORIGIN: "https://api.telegram.org",
+    SPLURNK_TELEGRAM_SET_WEBHOOK: "0",
+    SPLURNK_ROOM_VERIFY_TTL_SEC: "300",
     SPLURNK_LOGIN_TTL_SEC: "600",
     SPLURNK_SESSION_TTL_SEC: "2592000",
 });
@@ -34,6 +36,8 @@ describe("Config", () => {
         assert.equal(config.botHandle, "splurnkbot");
         assert.equal(config.telegramOidcIssuer, "https://oauth.telegram.org");
         assert.equal(config.telegramApiOrigin, "https://api.telegram.org");
+        assert.equal(config.telegramSetWebhook, false);
+        assert.equal(config.roomVerifyTtlSec, 300);
         assert.equal(config.loginTtlSec, 600);
         assert.equal(config.sessionTtlSec, 2592000);
         assert.deepEqual(config.secrets, {
