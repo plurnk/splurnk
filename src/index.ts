@@ -18,7 +18,12 @@ export {
     type RouteHandler,
     writeProblem,
 } from "./Server.ts";
-export { default as Splurnk, type SplurnkOptions } from "./Splurnk.ts";
+export {
+    default as Splurnk,
+    type SplurnkDiagnosticEvent,
+    type SplurnkDiagnosticHandler,
+    type SplurnkOptions,
+} from "./Splurnk.ts";
 export type {
     AuthorizationBegin,
     default as IdentityProvider,

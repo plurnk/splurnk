@@ -25,23 +25,56 @@ const MAX_WEBHOOK_BYTES = 262_144;
 const ROOM_JOIN_ROUTE = /^\/rooms\/join\/([^/]+)$/u;
 const ROOM_ROTATE_ROUTE = /^\/rooms\/(\d+)\/rotate-join-link$/u;
 
+export interface SplurnkDiagnosticEvent {
+    readonly method: string;
+    readonly pathname: string;
+    readonly status: number;
+    readonly problemSlug: string;
+    readonly detail?: string;
+    readonly cause?: string;
+}
+
+export type SplurnkDiagnosticHandler = (event: SplurnkDiagnosticEvent) => void;
+
 export interface SplurnkOptions {
     readonly config: SplurnkConfig;
     readonly identityProvider?: IdentityProvider | null;
     readonly chatAdapter?: ChatAdapter | null;
     readonly onRoomMention?: RoomMentionHandler;
+    readonly onDiagnostic?: SplurnkDiagnosticHandler;
     readonly staticAssets?: StaticAssets;
 }
 
-function writeDocument(
+function sanitizeDiagnosticText(raw: string): string {
+    return raw.replace(/\?[^\s"')]*/gu, "?[redacted]").slice(0, 240);
+}
+
+function formatCauseSummary(cause: unknown): string | undefined {
+    if (cause instanceof Error) {
+        return sanitizeDiagnosticText(`${cause.name}: ${cause.message}`);
+    }
+    return undefined;
+}
+
+function acceptsHtmlDocument(req: IncomingMessage): boolean {
+    const method = req.method ?? "GET";
+    if (method !== "GET" && method !== "HEAD") {
+        return false;
+    }
+    const accept = req.headers.accept;
+    return typeof accept === "string" && accept.includes("text/html");
+}
+
+function writeStatusDocument(
     res: ServerResponse,
     method: string,
+    status: number,
     contentType: string,
     payload: string,
     headers: Readonly<Record<string, string>>,
 ): void {
     const body = Buffer.from(payload, "utf8");
-    res.writeHead(200, {
+    res.writeHead(status, {
         ...headers,
         "Content-Length": String(body.byteLength),
         "Content-Type": contentType,
@@ -51,6 +84,16 @@ function writeDocument(
         return;
     }
     res.end(body);
+}
+
+function writeDocument(
+    res: ServerResponse,
+    method: string,
+    contentType: string,
+    payload: string,
+    headers: Readonly<Record<string, string>>,
+): void {
+    writeStatusDocument(res, method, 200, contentType, payload, headers);
 }
 
 function redirectSeeOther(res: ServerResponse, location: string): void {
@@ -168,6 +211,7 @@ export default class Splurnk {
     readonly #providedIdentityProvider: IdentityProvider | null | undefined;
     readonly #providedChatAdapter: ChatAdapter | null | undefined;
     readonly #onRoomMention: RoomMentionHandler | undefined;
+    readonly #onDiagnostic: SplurnkDiagnosticHandler | undefined;
     readonly #providedAssets: StaticAssets | undefined;
     #db: SqlRite | null = null;
     #sessions: SessionManager | null = null;
@@ -183,6 +227,7 @@ export default class Splurnk {
         this.#providedIdentityProvider = options.identityProvider;
         this.#providedChatAdapter = options.chatAdapter;
         this.#onRoomMention = options.onRoomMention;
+        this.#onDiagnostic = options.onDiagnostic;
         this.#providedAssets = options.staticAssets;
     }
 
@@ -336,6 +381,77 @@ export default class Splurnk {
     }
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+        const documents = this.#documents;
+        const sessions = this.#sessions;
+        const method = req.method ?? "GET";
+        const parsedUrl = new URL(req.url ?? "/", this.#config.publicOrigin);
+        const { pathname } = parsedUrl;
+
+        try {
+            return await this.#dispatchRoute(req, res, method, parsedUrl);
+        } catch (error) {
+            if (error instanceof HttpError) {
+                if (error.status >= 500 || pathname.startsWith("/auth/")) {
+                    const cause = formatCauseSummary(error.cause);
+                    this.#onDiagnostic?.({
+                        method,
+                        pathname,
+                        status: error.status,
+                        problemSlug: error.problemSlug,
+                        detail: error.message,
+                        ...(cause !== undefined ? { cause } : {}),
+                    });
+                }
+                if (
+                    !res.headersSent &&
+                    documents !== null &&
+                    sessions !== null &&
+                    pathname !== "/health" &&
+                    acceptsHtmlDocument(req)
+                ) {
+                    const html = documents.renderError({
+                        status: error.status,
+                        title: error.title,
+                        detail: error.message,
+                        retryLoginHref:
+                            pathname.startsWith("/auth/") && sessions.oidcConfigured
+                                ? "/auth/login"
+                                : null,
+                    });
+                    writeStatusDocument(
+                        res,
+                        method,
+                        error.status,
+                        "text/html; charset=utf-8",
+                        html,
+                        {
+                            ...PRIVATE_DOCUMENT_HEADERS,
+                            ...error.headers,
+                        },
+                    );
+                    return true;
+                }
+                throw error;
+            }
+
+            const cause = formatCauseSummary(error);
+            this.#onDiagnostic?.({
+                method,
+                pathname,
+                status: 500,
+                problemSlug: "request-failed",
+                ...(cause !== undefined ? { cause } : {}),
+            });
+            throw error;
+        }
+    }
+
+    async #dispatchRoute(
+        req: IncomingMessage,
+        res: ServerResponse,
+        method: string,
+        parsedUrl: URL,
+    ): Promise<boolean> {
         const db = this.#db;
         const sessions = this.#sessions;
         const rooms = this.#rooms;
@@ -351,8 +467,6 @@ export default class Splurnk {
             throw new Error("Splurnk route invoked before startup settled.");
         }
 
-        const method = req.method ?? "GET";
-        const parsedUrl = new URL(req.url ?? "/", this.#config.publicOrigin);
         const { pathname } = parsedUrl;
 
         if (pathname === "/health") {

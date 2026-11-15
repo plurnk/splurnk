@@ -12,6 +12,7 @@ import {
     Splurnk,
     TelegramChatAdapter,
     type ProblemDetails,
+    type SplurnkDiagnosticEvent,
 } from "./index.ts";
 
 const RSA_KEYS = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -24,6 +25,7 @@ const PUBLIC_JWK = {
 
 interface MockOidcProfile {
     sub: string;
+    id?: number;
     name: string;
     preferred_username?: string;
     picture?: string;
@@ -31,10 +33,8 @@ interface MockOidcProfile {
 
 async function startMockOidcServer(getProfile: () => MockOidcProfile): Promise<{
     issuer: string;
-    setNextNonce(nonce: string): void;
     stop(): Promise<void>;
 }> {
-    let nextNonce = "";
     let issuer = "";
     const server: Server = createServer(async (req, res) => {
         const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -63,7 +63,8 @@ async function startMockOidcServer(getProfile: () => MockOidcProfile): Promise<{
             }
             const form = new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
             if (form.get("code") === "bad-code") {
-                res.writeHead(400, { "Content-Type": "application/json" });
+                // Live oauth.telegram.org/token answers HTTP 200 on invalid_grant.
+                res.writeHead(200, { "Content-Type": "application/json" });
                 res.end(JSON.stringify({ error: "invalid_grant" }));
                 return;
             }
@@ -79,7 +80,6 @@ async function startMockOidcServer(getProfile: () => MockOidcProfile): Promise<{
                     aud: "splurnk-client",
                     iat: nowSec,
                     exp: nowSec + 300,
-                    nonce: nextNonce,
                     ...profile,
                 }),
                 "utf8",
@@ -108,9 +108,6 @@ async function startMockOidcServer(getProfile: () => MockOidcProfile): Promise<{
 
     return {
         issuer,
-        setNextNonce(nonce: string) {
-            nextNonce = nonce;
-        },
         async stop() {
             await new Promise<void>((resolve, reject) =>
                 server.close((err) => (err ? reject(err) : resolve())),
@@ -263,9 +260,10 @@ describe("Splurnk application runtime", () => {
         assert.ok(typeof brotliDecompressSync === "function");
     });
 
-    test("{§splurnk-identity-oidc} {§splurnk-deployment-boundary} completes end-to-end Telegram OIDC login, session rotation, room rendering, and CSRF-guarded logout", async (t) => {
+    test("{§splurnk-identity-oidc} {§splurnk-deployment-boundary} completes end-to-end Telegram OIDC login, session rotation, browser callback recovery, room rendering, and CSRF-guarded logout", async (t) => {
         let activeProfile: MockOidcProfile = {
-            sub: "555001",
+            sub: "opaque-kj-subject",
+            id: 555001,
             name: "Katherine Johnson",
             preferred_username: "kjohnson",
             picture: "https://t.me/i/userpic/320/kj.jpg",
@@ -273,6 +271,7 @@ describe("Splurnk application runtime", () => {
         const oidc = await startMockOidcServer(() => activeProfile);
         t.after(() => oidc.stop());
 
+        const diagnostics: SplurnkDiagnosticEvent[] = [];
         const config = readConfig(
             makeEnv({
                 SPLURNK_TELEGRAM_OIDC_ISSUER: oidc.issuer,
@@ -281,7 +280,12 @@ describe("Splurnk application runtime", () => {
                 SPLURNK_SESSION_SECRET: "unit-test-session-sealing-secret",
             }),
         );
-        const app = new Splurnk({ config });
+        const app = new Splurnk({
+            config,
+            onDiagnostic(event) {
+                diagnostics.push(event);
+            },
+        });
         const baseUrl = await app.start();
         t.after(() => app.stop());
 
@@ -304,20 +308,69 @@ describe("Splurnk application runtime", () => {
 
         const authLocation = new URL(loginRes.headers.get("location") ?? "");
         assert.equal(authLocation.origin, oidc.issuer);
+        assert.equal(
+            authLocation.searchParams.get("scope"),
+            "openid profile telegram:bot_access",
+        );
         const state = authLocation.searchParams.get("state") ?? "";
-        const nonce = authLocation.searchParams.get("nonce") ?? "";
-        oidc.setNextNonce(nonce);
 
-        // 3. Tampered transaction cookie fails closed (400) and clears cookie.
+        // 3. Tampered transaction cookie fails closed (400), clears cookie, and renders HTML recovery for browsers.
         const tamperedRes = await fetch(
-            `${baseUrl}/auth/callback?code=ok&state=${encodeURIComponent(state)}`,
+            `${baseUrl}/auth/callback?code=secret-code-123&state=${encodeURIComponent(state)}`,
             {
                 headers: { Cookie: `__Secure-splurnk_login_${state}=tampered` },
                 redirect: "manual",
             },
         );
         assert.equal(tamperedRes.status, 400);
+        assert.match(tamperedRes.headers.get("content-type") ?? "", /application\/problem\+json/u);
         assert.match(tamperedRes.headers.getSetCookie()[0] ?? "", /Max-Age=0/u);
+
+        const browserCallbackError = await fetch(
+            `${baseUrl}/auth/callback?code=secret-code-456&state=${encodeURIComponent(state)}`,
+            {
+                headers: { Accept: "text/html,application/xhtml+xml" },
+                redirect: "manual",
+            },
+        );
+        assert.equal(browserCallbackError.status, 400);
+        assert.match(browserCallbackError.headers.get("content-type") ?? "", /text\/html/u);
+        const browserErrorHtml = await browserCallbackError.text();
+        assert.match(browserErrorHtml, /400 Bad Request/u);
+        assert.match(browserErrorHtml, /<a href="\/auth\/login" role="button">Sign in with Telegram<\/a>/u);
+
+        const browserCallbackHead = await fetch(
+            `${baseUrl}/auth/callback?code=secret-code-789&state=${encodeURIComponent(state)}`,
+            {
+                method: "HEAD",
+                headers: { Accept: "text/html" },
+                redirect: "manual",
+            },
+        );
+        assert.equal(browserCallbackHead.status, 405);
+
+        // Verify HTTP 200 {"error":"invalid_grant"} from Telegram maps to 400 oidc-grant-invalid + sanitized diagnostics.
+        const badGrantLogin = await fetch(`${baseUrl}/auth/login`, { redirect: "manual" });
+        const badGrantCookie = (badGrantLogin.headers.getSetCookie()[0] ?? "").split(";")[0] ?? "";
+        const badGrantState =
+            new URL(badGrantLogin.headers.get("location") ?? "").searchParams.get("state") ?? "";
+        const badGrantCallback = await fetch(
+            `${baseUrl}/auth/callback?code=bad-code&state=${encodeURIComponent(badGrantState)}`,
+            {
+                headers: { Accept: "text/html", Cookie: badGrantCookie },
+                redirect: "manual",
+            },
+        );
+        assert.equal(badGrantCallback.status, 400);
+        assert.match(await badGrantCallback.text(), /Sign in with Telegram/u);
+
+        // Diagnostics omit query strings, authorization codes, and state tokens.
+        assert.ok(diagnostics.some((entry) => entry.problemSlug === "oidc-grant-invalid"));
+        for (const entry of diagnostics) {
+            const serialized = JSON.stringify(entry);
+            assert.doesNotMatch(serialized, /secret-code|bad-code/u);
+            assert.equal(entry.pathname, "/auth/callback");
+        }
 
         // 4. Complete genuine callback -> mints __Host-splurnk_session and redirects to /?view=chat.
         const callbackRes = await fetch(
@@ -337,6 +390,30 @@ describe("Splurnk application runtime", () => {
             /^__Host-splurnk_session=[\w-]+; Path=\/; HttpOnly; SameSite=Lax; Max-Age=2592000; Secure$/u,
         );
         const firstSessionCookie = (callbackCookies[1] ?? "").split(";")[0] ?? "";
+
+        // Re-visiting /auth/callback without a transaction cookie while already signed in redirects cleanly to /.
+        const replaySignedInCallback = await fetch(
+            `${baseUrl}/auth/callback?code=bad-code&state=${encodeURIComponent(state)}`,
+            {
+                headers: { Cookie: firstSessionCookie },
+                redirect: "manual",
+            },
+        );
+        assert.equal(replaySignedInCallback.status, 303);
+        assert.equal(replaySignedInCallback.headers.get("location"), "/");
+
+        // Browser GET on non-auth 404 route renders spartan HTML error card with Home link.
+        const browserMissingRoom = await fetch(`${baseUrl}/?room=99999`, {
+            headers: { Accept: "text/html", Cookie: firstSessionCookie },
+        });
+        assert.equal(browserMissingRoom.status, 404);
+        assert.match(await browserMissingRoom.text(), /<a href="\/">Home<\/a>/u);
+        const browserMissingRoomHead = await fetch(`${baseUrl}/?room=99999`, {
+            method: "HEAD",
+            headers: { Accept: "text/html", Cookie: firstSessionCookie },
+        });
+        assert.equal(browserMissingRoomHead.status, 404);
+        assert.equal(await browserMissingRoomHead.text(), "");
 
         // 5. Visiting /auth/login while already signed in redirects immediately without new OIDC flow.
         const repeatLogin = await fetch(`${baseUrl}/auth/login?return=%2F`, {
@@ -383,13 +460,13 @@ describe("Splurnk application runtime", () => {
         // 7. Rotate session on re-login (without avatar/username to exercise initials fallback too)
         // and prove firstSessionCookie is revoked.
         activeProfile = {
-            sub: "555001",
+            sub: "opaque-kj-subject",
+            id: 555001,
             name: "Katherine Goble Johnson",
         };
         const secondLogin = await fetch(`${baseUrl}/auth/login`, { redirect: "manual" });
         const secondTxCookie = (secondLogin.headers.getSetCookie()[0] ?? "").split(";")[0] ?? "";
         const secondLoc = new URL(secondLogin.headers.get("location") ?? "");
-        oidc.setNextNonce(secondLoc.searchParams.get("nonce") ?? "");
 
         const secondCallback = await fetch(
             `${baseUrl}/auth/callback?code=valid-2&state=${encodeURIComponent(secondLoc.searchParams.get("state") ?? "")}`,
@@ -719,7 +796,6 @@ describe("Splurnk application runtime", () => {
             const begin = await fetch(`${baseUrl}/auth/login`, { redirect: "manual" });
             const txPair = (begin.headers.getSetCookie()[0] ?? "").split(";")[0] ?? "";
             const loc = new URL(begin.headers.get("location") ?? "");
-            oidc.setNextNonce(loc.searchParams.get("nonce") ?? "");
             const finish = await fetch(
                 `${baseUrl}/auth/callback?code=ok&state=${encodeURIComponent(loc.searchParams.get("state") ?? "")}`,
                 { headers: { Cookie: txPair }, redirect: "manual" },
@@ -730,7 +806,12 @@ describe("Splurnk application runtime", () => {
             return { cookie, csrf };
         };
 
-        const aliceAuth = await signInAs({ sub: "7001", name: "Alice Founder", preferred_username: "alice" });
+        const aliceAuth = await signInAs({
+            sub: "opaque-7001",
+            id: 7001,
+            name: "Alice Founder",
+            preferred_username: "alice",
+        });
 
         // 3. Alice sees Room Seven, NOT Room Eight; probing ?room=<RoomEight.id> or malformed ?room=abc fails closed!
         const roomEightRow = await app.db.getRoomByJoinCode.get<{ id: number }>({ joinCode: joinCodeEight });
@@ -774,7 +855,12 @@ describe("Splurnk application runtime", () => {
         assert.match(signedOutJoinHtml, /Sign in with Telegram/u);
 
         // 5. Carol (member 7002 of Room Seven) signs in, views join card, joins Room Seven, cannot rotate link (403).
-        const carolAuth = await signInAs({ sub: "7002", name: "Carol Peer", preferred_username: "carol" });
+        const carolAuth = await signInAs({
+            sub: "opaque-7002",
+            id: 7002,
+            name: "Carol Peer",
+            preferred_username: "carol",
+        });
         const carolJoinPage = await (
             await fetch(`${baseUrl}/rooms/join/${joinCodeSeven}`, { headers: { Cookie: carolAuth.cookie } })
         ).text();

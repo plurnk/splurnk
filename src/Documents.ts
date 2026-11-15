@@ -172,11 +172,34 @@ export interface RoomJoinDocumentProps {
     readonly alreadyEnrolled: boolean;
 }
 
+export interface ErrorDocumentProps {
+    readonly status: number;
+    readonly title: string;
+    readonly detail: string;
+    readonly retryLoginHref?: string | null;
+}
+
 export default class Documents {
     readonly #shell: CompiledShell;
 
     constructor(indexHtml: string) {
         this.#shell = compileShell(indexHtml);
+    }
+
+    renderError(props: ErrorDocumentProps): string {
+        const heading = `${props.status} ${props.title}`;
+        const actionMarkup =
+            props.retryLoginHref !== undefined && props.retryLoginHref !== null
+                ? `<p><a href="${escapeHtml(props.retryLoginHref)}" role="button">Sign in with Telegram</a></p>`
+                : `<p><a href="/">Home</a></p>`;
+
+        return this.#shell.render({
+            title: `${heading} — Splurnk`,
+            authState: "signed-out",
+            view: "tasks",
+            headerInner: BRAND_LINK,
+            mainInner: `<article aria-labelledby="error-title"><header><h1 id="error-title">${escapeHtml(heading)}</h1></header><p>${escapeHtml(props.detail)}</p>${actionMarkup}</article>`,
+        });
     }
 
     renderSignIn(props: SignInDocumentProps): string {
