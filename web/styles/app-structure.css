@@ -1,8 +1,8 @@
-/* {§splurnk-http-lifecycle} {§splurnk-identity-oidc} {§splurnk-chat-seam} Structural shell layout and responsive gutters. */
+/* {§splurnk-web-shell} {§splurnk-http-lifecycle} {§splurnk-identity-oidc} {§splurnk-chat-seam} Spartan shell layout, 2ch mascot/icon scale, and responsive gutters. */
 body > header,
 body > main,
 body > footer {
-    max-inline-size: 72ch;
+    max-inline-size: 65ch;
     margin-inline: auto;
     padding-right: calc(var(--pico-spacing) + env(safe-area-inset-right, 0px));
     padding-left: calc(var(--pico-spacing) + env(safe-area-inset-left, 0px));
@@ -10,31 +10,46 @@ body > footer {
 }
 
 body > header {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "brand breadcrumb menu";
     align-items: center;
-    justify-content: space-between;
     gap: var(--pico-spacing);
-    padding-block: calc(var(--pico-spacing) * 0.75 + env(safe-area-inset-top, 0px)) calc(var(--pico-spacing) * 0.75);
+    padding-block: calc(var(--pico-spacing) * 0.5 + env(safe-area-inset-top, 0px)) calc(var(--pico-spacing) * 0.5);
     border-block-end: var(--pico-border-width) solid var(--pico-muted-border-color);
 }
 
-body > header > a[data-brand] {
-    display: inline-flex;
+body > header > a {
+    display: flex;
+    grid-area: brand;
     align-items: center;
-    gap: 0.5ch;
-    font-weight: 700;
-    text-decoration: none;
 }
 
-body > header > a[data-brand] > img {
-    inline-size: 1.75rem;
-    block-size: 1.75rem;
+body > header > a > img {
+    inline-size: 2ch;
+    block-size: 2ch;
+}
+
+body > header > nav[aria-label="Rooms"] {
+    grid-area: breadcrumb;
+    min-inline-size: 0;
+    overflow-x: auto;
+}
+
+body > header > nav[aria-label="Main navigation"] {
+    grid-area: menu;
+}
+
+body > header nav svg {
+    display: inline-block;
+    inline-size: 2ch;
+    block-size: 2ch;
+    vertical-align: middle;
 }
 
 body > header nav[aria-label] > ul {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     gap: calc(var(--pico-spacing) * 0.5);
     margin: 0;
@@ -45,6 +60,7 @@ body > header nav[aria-label] li {
     list-style: none;
     margin: 0;
     padding: 0;
+    white-space: nowrap;
 }
 
 header nav form,
@@ -53,21 +69,16 @@ header nav button[type="submit"] {
 }
 
 header nav button {
-    --pico-form-element-spacing-vertical: 0.3rem;
-    --pico-form-element-spacing-horizontal: 0.65rem;
+    --pico-form-element-spacing-vertical: 0.2rem;
+    --pico-form-element-spacing-horizontal: 0.2rem;
 
     inline-size: auto;
 }
 
-[data-member-badge] {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5ch;
-}
-
 [data-avatar] {
-    inline-size: 1.75rem;
-    block-size: 1.75rem;
+    display: block;
+    inline-size: 2ch;
+    block-size: 2ch;
     border-radius: 50%;
     object-fit: cover;
 }
@@ -76,10 +87,10 @@ header nav button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    inline-size: 1.75rem;
-    block-size: 1.75rem;
+    inline-size: 2ch;
+    block-size: 2ch;
     border-radius: 50%;
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     font-weight: 700;
 }
 
@@ -91,8 +102,15 @@ header nav button {
 
 [data-mode-switch] a {
     display: inline-block;
-    padding: 0.25rem 0.65rem;
+    padding: 0.15rem 0.5rem;
     border-block-end: calc(var(--pico-border-width) * 2) solid transparent;
+    text-decoration: none;
+}
+
+[data-room-link] {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--pico-border-radius);
     text-decoration: none;
 }
 
@@ -100,54 +118,8 @@ body > main {
     padding-block: var(--pico-block-spacing-vertical) calc(var(--pico-block-spacing-vertical) + env(safe-area-inset-bottom, 0px));
 }
 
-[data-room-switcher] {
+[data-room-meta] {
     margin-block-end: var(--pico-spacing);
-}
-
-[data-room-switcher] > :where(ul) {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: calc(var(--pico-spacing) * 0.5);
-    margin: 0;
-    padding: 0;
-}
-
-[data-room-switcher] :where(li) {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-
-[data-room-link] {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4ch;
-    padding: 0.25rem 0.65rem;
-    border: var(--pico-border-width) solid var(--pico-muted-border-color);
-    border-radius: var(--pico-border-radius);
-    text-decoration: none;
-}
-
-[data-room-list] {
-    display: grid;
-    gap: calc(var(--pico-spacing) * 0.75);
-    margin: 0 0 var(--pico-spacing);
-    padding: 0;
-}
-
-[data-room-list] > :where(li) {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-
-[data-room-card] > header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: calc(var(--pico-spacing) * 0.5);
 }
 
 [data-roster-list] {
@@ -164,7 +136,7 @@ body > main {
     gap: 0.4ch;
     list-style: none;
     margin: 0;
-    padding: 0.2rem 0.5rem;
+    padding: 0.15rem 0.5rem;
     border: var(--pico-border-width) solid var(--pico-muted-border-color);
     border-radius: var(--pico-border-radius);
 }
@@ -174,7 +146,7 @@ body > main {
 }
 
 [data-inline-form] > :where(button) {
-    --pico-form-element-spacing-vertical: 0.3rem;
+    --pico-form-element-spacing-vertical: 0.25rem;
     --pico-form-element-spacing-horizontal: 0.65rem;
 
     inline-size: auto;
@@ -183,13 +155,16 @@ body > main {
 
 [data-panel-toolbar] {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
-    gap: calc(var(--pico-spacing) * 0.75);
+    justify-content: flex-end;
+    gap: calc(var(--pico-spacing) * 0.5);
     margin-block-end: var(--pico-spacing);
 }
 
-[data-panel-toolbar] > h1 {
+[data-panel-toolbar] > :where(button) {
+    --pico-form-element-spacing-vertical: 0.25rem;
+    --pico-form-element-spacing-horizontal: 0.65rem;
+
+    inline-size: auto;
     margin: 0;
 }

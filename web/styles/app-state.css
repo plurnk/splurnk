@@ -1,4 +1,4 @@
-/* {§splurnk-identity-oidc} {§splurnk-chat-seam} Attribute-driven visual state for authentication, room selection, and view modes. */
+/* {§splurnk-web-shell} {§splurnk-identity-oidc} {§splurnk-chat-seam} Attribute-driven visual state for authentication, room selection, and view modes. */
 body[data-auth-state="signed-out"] [data-signed-in-only] {
     display: none;
 }
@@ -14,9 +14,8 @@ body[data-view="chat"] [data-panel="tasks"] {
     font-weight: 700;
 }
 
-[data-room-link][aria-current="true"] {
+[data-room-link][aria-current="page"] {
     background-color: var(--splurnk-accent-surface);
-    border-color: var(--splurnk-accent-border);
     color: var(--pico-primary);
     font-weight: 700;
 }

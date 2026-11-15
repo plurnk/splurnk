@@ -533,7 +533,7 @@ export default class RoomCoordinator {
             const joinUrl = this.buildJoinUrl(room.joinCode);
             await this.#chatAdapter.sendRoomMessage(
                 room.externalChatId,
-                `Splurnk is active for "${room.title}". Enroll on the task board: ${joinUrl} — tag @${this.#botHandle} here anytime to coordinate together.`,
+                `${room.title}: ${joinUrl}`,
             );
         }
     }
@@ -600,9 +600,10 @@ export default class RoomCoordinator {
                 promptText,
             });
         } else {
-            const joinSuffix =
-                room.joinCode !== null ? ` Join link: ${this.buildJoinUrl(room.joinCode)}` : "";
-            replyText = `"${room.title}" is enrolled on ${this.#publicOrigin} (workspace ${room.plurnkWorkspace}#room).${joinSuffix}`;
+            replyText =
+                room.joinCode !== null
+                    ? `${room.title}: ${this.buildJoinUrl(room.joinCode)}`
+                    : `${room.title}: ${this.#publicOrigin}`;
         }
 
         if (replyText !== null && this.#chatAdapter !== null) {
@@ -619,7 +620,7 @@ export default class RoomCoordinator {
         }
         await this.#chatAdapter.sendDirectNotification(
             senderProfile.externalSubject,
-            `Direct messages from @${this.#botHandle} deliver outbound notifications, alerts, and check-ins only. Sign in at ${this.#publicOrigin} to manage tasks or chat with @${this.#botHandle}.`,
+            `Outbound notifications only (@${this.#botHandle}): ${this.#publicOrigin}`,
         );
     }
 }

@@ -1,6 +1,7 @@
-/* {§splurnk-http-lifecycle} Brand #148800 palette and light/dark custom property tokens. */
+/* {§splurnk-web-shell} {§splurnk-http-lifecycle} Brand #148800 palette, monospace typography, and light/dark custom property tokens. */
 :root {
-    --pico-line-height: 1.4;
+    --pico-font-family: var(--pico-font-family-monospace);
+    --pico-line-height: 1.25;
     --splurnk-accent-surface: color-mix(in srgb, var(--pico-primary) 12%, var(--pico-card-background-color));
     --splurnk-accent-border: color-mix(in srgb, var(--pico-primary) 28%, var(--pico-card-border-color));
 }
@@ -36,11 +37,12 @@
     color: var(--pico-primary);
 }
 
-header nav button[data-signout] {
-    --pico-primary-background: var(--pico-secondary-background);
-    --pico-primary-border: var(--pico-secondary-border);
-    --pico-primary-hover-background: var(--pico-secondary-hover-background);
-    --pico-primary-hover-border: var(--pico-secondary-hover-border);
-    --pico-primary-inverse: var(--pico-secondary-inverse);
-    --pico-primary-focus: var(--pico-secondary-focus);
+header nav button {
+    --pico-primary-background: transparent;
+    --pico-primary-border: transparent;
+    --pico-primary-hover-background: transparent;
+    --pico-primary-hover-border: transparent;
+    --pico-primary-inverse: var(--pico-primary);
+
+    cursor: pointer;
 }

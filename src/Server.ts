@@ -20,7 +20,6 @@ function escapeHtml(value: string): string {
 
 function renderIndexDocument(config: SplurnkConfig): string {
     const handle = escapeHtml(`@${config.botHandle}`);
-    const origin = escapeHtml(config.publicOrigin);
     return `<!doctype html>
 <html lang="en">
   <head>
@@ -30,8 +29,7 @@ function renderIndexDocument(config: SplurnkConfig): string {
   </head>
   <body>
     <main>
-      <h1>Splurnk</h1>
-      <p>Social task coordination with <code>${handle}</code> at <code>${origin}</code>.</p>
+      <p><code>${handle}</code></p>
     </main>
   </body>
 </html>

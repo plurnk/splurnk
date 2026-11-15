@@ -1,3 +1,4 @@
+// {§splurnk-web-shell} Prepare vendor stylesheets, licenses, safe-circle maskable icon, and precompressed web inventory.
 import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,6 +41,12 @@ export async function prepareVendorAssets(): Promise<void> {
         new URL("app-vendor.css", stylesDir),
     );
     await copyFile(new URL("LICENSE.md", picoRoot), new URL("PICO-LICENSE.txt", vendorDir));
+
+    const iconsDir = new URL("./public/icons/", webRoot);
+    const artwork = await readFile(new URL("splurnk.svg", iconsDir), "utf8");
+    // {§splurnk-web-shell} Keep all meaningful artwork within the 40%-radius maskable safe circle.
+    const maskable = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><rect width="128" height="128" fill="#ffffff"/><g transform="translate(19.2 19.2) scale(0.7)">${artwork}</g></svg>\n`;
+    await writeFile(new URL("splurnk-maskable.svg", iconsDir), maskable);
 }
 
 export async function buildWebAssets(): Promise<void> {

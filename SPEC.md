@@ -37,11 +37,21 @@ Optional secret variables (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_OIDC_CLIENT_ID`, `TEL
 | Request / Lifecycle | Contract |
 |---|---|
 | `GET /health` (active) | Answers `200 OK` (`application/json; charset=utf-8`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`) with `{"status":"ok","origin":"<SPLURNK_PUBLIC_ORIGIN>","botHandle":"<SPLURNK_BOT_HANDLE>"}`. |
-| `GET /` (active) | Answers `200 OK` (`text/html; charset=utf-8`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`) with a semantic HTML document identifying the service and configured `@<SPLURNK_BOT_HANDLE>`. |
+| `GET /` (active) | Answers `200 OK` (`text/html; charset=utf-8`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`) with a spartan semantic HTML document under {§splurnk-web-shell}. |
 | `HEAD` on served routes | Answers the identical status and headers as `GET` with an empty body. |
 | Unknown route | Answers `404` RFC 9457 Problem Details (`application/problem+json; charset=utf-8`, `type: "https://problems.plurnk.xyz/splurnk/not-found"`). |
 | Unsupported method | Answers `405` RFC 9457 Problem Details (`Allow: GET, HEAD`, `type: "https://problems.plurnk.xyz/splurnk/method-not-allowed"`). |
 | `stop()` / drain | Immediately flips new requests on all routes (including `/health`) to `503` Problem Details (`type: "https://problems.plurnk.xyz/splurnk/service-stopping"`, `retryable: true`) while awaiting in-flight handlers up to `SPLURNK_STOP_TIMEOUT_MS` before closing the listener; idempotent across repeated calls. |
+
+## §splurnk-web-shell Spartan document shell, icons, and installation
+
+Splurnk adopts the `@plurnk/plurnk-web` icon, logo, favicon, and native document shell contract (#9) with zero marketing or placeholder prose:
+
+| Surface | Contract |
+|---|---|
+| Icons & licensing | Single Google Noto Emoji hamster SVG (`/icons/splurnk.svg`, glasses and `#148800` bow) for header, `<link rel="icon" type="image/svg+xml" sizes="any">`, and manifest (`purpose: "any"`, `sizes: "any"`), with zero raster fallback; `/icons/NOTO-NOTICE.txt` and `/icons/APACHE-2.0.txt` ship as public assets. Build generates opaque safe-circle `/icons/splurnk-maskable.svg` (`purpose: "maskable"`, `sizes: "any"`). |
+| Manifest & metadata | `manifest.webmanifest` declares `id: "/"`, `start_url: "/"`, `scope: "/"`, `display: "standalone"`, `theme_color: "#148800"`, and `background_color: "#ffffff"`. HTML declares `robots: noindex, nofollow`, `referrer: same-origin`, `color-scheme: light dark`, monospace typography (`1.25` line height), and `65ch` measure. |
+| Header & empty states | Mascot-only home link (`2ch` monospace scale, accessible `alt="Splurnk"`, `title="Home"`), horizontally scrollable room strip when enrolled, `2ch` member avatar and inline SVG `Sign out` control (`aria-label` + `title`); anonymous documents omit session controls. Empty containers render concise structural markers (`No rooms.`, `No tasks.`, `No messages.`) with zero filler prose. |
 
 ## §splurnk-daemon-posture Dedicated Plurnk daemon posture and workspace RBAC
 

@@ -15,6 +15,7 @@ AGENTS.local.md
 SqlRite.d.ts
 web/styles/app-vendor.css
 web/public/vendor/*
+web/public/icons/splurnk-maskable.svg
 playwright-report*/
 test-results*/
 .playwright-mcp/

@@ -155,7 +155,7 @@ describe("Splurnk application runtime", () => {
         }
     });
 
-    test("{§splurnk-http-lifecycle} {§splurnk-identity-oidc} serves sign-in shell, precompressed Vite assets, health readiness, and 503 when OIDC is unconfigured", async (t) => {
+    test("{§splurnk-web-shell} {§splurnk-http-lifecycle} {§splurnk-identity-oidc} serves spartan sign-in shell, plurnk-web icons and manifest, precompressed Vite assets, health readiness, and 503 when OIDC is unconfigured", async (t) => {
         const config = readConfig(makeEnv());
         const app = new Splurnk({ config });
         assert.throws(() => app.url, /has not been started/u);
@@ -181,8 +181,9 @@ describe("Splurnk application runtime", () => {
         assert.equal(landingRes.status, 200);
         assert.match(landingRes.headers.get("content-security-policy") ?? "", /form-action 'self'/u);
         const html = await landingRes.text();
-        assert.match(html, /@splurnk_dev_bot/u);
-        assert.match(html, /not yet configured/u);
+        assert.match(html, /<a href="\/" title="Home"><img src="\/icons\/splurnk\.svg" width="32" height="32" alt="Splurnk"><\/a>/u);
+        assert.match(html, /Sign-in unavailable\./u);
+        assert.doesNotMatch(html, /data-signout/u);
 
         const cssMatch = /href="(\/assets\/[^"]+\.css)"/u.exec(html);
         assert.ok(cssMatch, "landing HTML links built Vite stylesheet");
@@ -238,12 +239,27 @@ describe("Splurnk application runtime", () => {
         assert.equal((await fetch(`${baseUrl}/auth/callback`, { method: "POST" })).status, 405);
         assert.equal((await fetch(`${baseUrl}/auth/logout`)).status, 405);
 
-        // Verify brotli sidecar is genuinely compressed when requested without auto-decompression.
+        // Verify icons, maskable SVG, Noto Apache-2.0 notices, and manifest contract.
+        const svgText = await (await fetch(`${baseUrl}/icons/splurnk.svg`)).text();
+        assert.match(svgText, /Splurnk hamster with glasses and a green bow/u);
+        const maskableText = await (await fetch(`${baseUrl}/icons/splurnk-maskable.svg`)).text();
+        assert.match(maskableText, /translate\(19\.2 19\.2\) scale\(0\.7\)/u);
+        assert.equal((await fetch(`${baseUrl}/icons/NOTO-NOTICE.txt`)).status, 200);
+        assert.equal((await fetch(`${baseUrl}/icons/APACHE-2.0.txt`)).status, 200);
+
         const iconIdentity = await fetch(`${baseUrl}/manifest.webmanifest`, {
             headers: { "Accept-Encoding": "identity" },
         });
         assert.equal(iconIdentity.status, 200);
-        assert.ok((await iconIdentity.text()).includes("Splurnk"));
+        const manifestJson = (await iconIdentity.json()) as {
+            id: string;
+            icons: Array<{ src: string; sizes: string; purpose: string }>;
+        };
+        assert.equal(manifestJson.id, "/");
+        assert.deepEqual(
+            manifestJson.icons.map((entry) => `${entry.src}:${entry.purpose}:${entry.sizes}`),
+            ["/icons/splurnk.svg:any:any", "/icons/splurnk-maskable.svg:maskable:any"],
+        );
         assert.ok(typeof brotliDecompressSync === "function");
     });
 
@@ -360,10 +376,9 @@ describe("Splurnk application runtime", () => {
         assert.equal(chatBoardRes.status, 200);
         const chatBoardHtml = await chatBoardRes.text();
         assert.match(chatBoardHtml, /data-auth-state="signed-in" data-view="chat"/u);
-        assert.match(chatBoardHtml, /Katherine Johnson/u);
-        assert.match(chatBoardHtml, /@kjohnson/u);
+        assert.match(chatBoardHtml, /Katherine Johnson \(@kjohnson\)/u);
         assert.match(chatBoardHtml, /Orbital Mechanics/u);
-        assert.match(chatBoardHtml, /tg-10012345/u);
+        assert.match(chatBoardHtml, /No messages\./u);
 
         // 7. Rotate session on re-login (without avatar/username to exercise initials fallback too)
         // and prove firstSessionCookie is revoked.
@@ -754,14 +769,17 @@ describe("Splurnk application runtime", () => {
         // 4. Signed-out visitor hitting GET /rooms/join/:code sees OIDC prompt with ?return=...
         const signedOutJoinRes = await fetch(`${baseUrl}/rooms/join/${joinCodeSeven}`);
         assert.equal(signedOutJoinRes.status, 200);
-        assert.match(await signedOutJoinRes.text(), /Sign in with Telegram to join/u);
+        const signedOutJoinHtml = await signedOutJoinRes.text();
+        assert.match(signedOutJoinHtml, /<h1>Room Seven<\/h1>/u);
+        assert.match(signedOutJoinHtml, /Sign in with Telegram/u);
 
         // 5. Carol (member 7002 of Room Seven) signs in, views join card, joins Room Seven, cannot rotate link (403).
         const carolAuth = await signInAs({ sub: "7002", name: "Carol Peer", preferred_username: "carol" });
         const carolJoinPage = await (
             await fetch(`${baseUrl}/rooms/join/${joinCodeSeven}`, { headers: { Cookie: carolAuth.cookie } })
         ).text();
-        assert.match(carolJoinPage, /Verify membership &amp; join Room Seven/u);
+        assert.match(carolJoinPage, /<h1>Room Seven<\/h1>/u);
+        assert.match(carolJoinPage, /<button type="submit">Join<\/button>/u);
 
         const carolJoinPost = await fetch(`${baseUrl}/rooms/join/${joinCodeSeven}`, {
             method: "POST",
