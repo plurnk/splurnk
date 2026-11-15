@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 
-const ROOTS = ["scripts", "src", "test"];
+const ROOTS = ["scripts", "src", "test", "web"];
 const SOURCE_EXTENSIONS = new Set([".js", ".mjs", ".ts"]);
 const SQL =
     /\b(?:alter\s+table|create\s+(?:index|table|trigger|view)|delete\s+from|drop\s+(?:index|table|trigger|view)|insert\s+into|pragma\b|select\s+.+\s+from|update\s+\S+\s+set)\b/isu;

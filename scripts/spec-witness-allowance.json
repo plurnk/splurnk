@@ -1,7 +1,6 @@
 {
     "SPEC.md": [
         "splurnk-chat-seam",
-        "splurnk-identity-oidc",
         "splurnk-schedule-authority",
         "splurnk-task-board",
         "splurnk-workspace-sessions"

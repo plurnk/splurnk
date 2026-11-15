@@ -25,6 +25,8 @@ All non-secret operational defaults live in `.env.defaults` and are read exclusi
 | `SPLURNK_BOT_HANDLE` | `splurnkbot` | Bot handle without `@`, matching `^[A-Za-z][A-Za-z0-9_]{2,31}$`. |
 | `SPLURNK_TELEGRAM_OIDC_ISSUER` | `https://oauth.telegram.org` | Canonical `http:` or `https:` origin. |
 | `SPLURNK_TELEGRAM_API_ORIGIN` | `https://api.telegram.org` | Canonical `http:` or `https:` origin. |
+| `SPLURNK_LOGIN_TTL_SEC` | `600` | Safe integer `>= 1` seconds (in-flight OIDC login transaction TTL). |
+| `SPLURNK_SESSION_TTL_SEC` | `2592000` | Safe integer `>= 1` seconds (authenticated session TTL). |
 
 Optional secret variables (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_OIDC_CLIENT_ID`, `TELEGRAM_OIDC_CLIENT_SECRET`, `SPLURNK_SESSION_SECRET`, `PLURNK_SECRET`) default to `null` when unset or blank, are supplied via gitignored `.env.keys` (`0600`) or process environment, and are never echoed in logs, diagnostics, or HTTP responses. Missing floor keys throw an assembled-floor `Error`; invalid values throw `ConfigurationError` naming the offending key.
 
@@ -50,7 +52,13 @@ Optional secret variables (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_OIDC_CLIENT_ID`, `TEL
 
 ## §splurnk-identity-oidc Telegram OpenID Connect authentication
 
-Members sign in on the web through Telegram's standard OpenID Connect provider (`SPLURNK_TELEGRAM_OIDC_ISSUER`, default `https://oauth.telegram.org`) using Authorization Code with PKCE (`S256`), `state`, and `nonce`, requesting `openid profile` scopes. The verified ID Token's immutable `sub` claim identifies the Telegram user; `name`, `preferred_username`, and `picture` refresh presentation metadata at login, and OIDC tokens are discarded once the local Splurnk session is established.
+Members sign in on the web through Telegram's standard OpenID Connect provider (`SPLURNK_TELEGRAM_OIDC_ISSUER`, default `https://oauth.telegram.org`) using Authorization Code with PKCE (`S256`), `state`, and `nonce`, requesting `openid profile` scopes:
+
+| Endpoint / Boundary | Contract |
+|---|---|
+| `GET /auth/login` | Validates optional `?return=<local-path>` (default `/`), redirects `303` immediately when already signed in, or answers `503` Problem Details (`oidc-unconfigured`) when `TELEGRAM_OIDC_CLIENT_ID` / `TELEGRAM_OIDC_CLIENT_SECRET` are unset. Otherwise discovers OIDC metadata, seals `{ state, nonce, codeVerifier, redirectUri, returnTo, expiresAt }` into a single-use `HttpOnly; SameSite=Lax; Path=/auth` cookie (`__Secure-splurnk_login_<state>` under `https:`, `splurnk_login_<state>` under `http:`) for `SPLURNK_LOGIN_TTL_SEC`, and redirects `303 See Other` to `authorization_endpoint`. |
+| `GET /auth/callback` | Clears the single-use transaction cookie immediately regardless of outcome, redeems the authorization code via `ClientSecretBasic`, cryptographically verifies the ID Token JWS signature against `jwks_uri` and `nonce` / `aud` / `iss` claims without calling a `UserInfo` endpoint, extracts immutable `sub`, optional `preferred_username`, `name`, and `https:` `picture`, and discards OIDC tokens. Upserts the member in SQLite, revokes any prior session on the request, persists `sha256(sid)` and a per-session CSRF token for `SPLURNK_SESSION_TTL_SEC`, sets `__Host-splurnk_session` (`splurnk_session` under `http:`) at `Path=/`, and redirects `303 See Other` to `returnTo`. |
+| `POST /auth/logout` | Requires same-origin headers (`Origin` / `Sec-Fetch-Site`) and matching `_csrf` form token when a session is active, revokes the persisted session row, clears the session cookie (`Max-Age=0`), and redirects `303 See Other` to `/`. |
 
 ## §splurnk-chat-seam Modular chat adapter and Telegram boundary
 

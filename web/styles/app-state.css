@@ -1,0 +1,20 @@
+/* {§splurnk-identity-oidc} Attribute-driven visual state for authentication and view modes. */
+body[data-auth-state="signed-out"] [data-signed-in-only] {
+    display: none;
+}
+
+body[data-view="tasks"] [data-panel="chat"],
+body[data-view="chat"] [data-panel="tasks"] {
+    display: none;
+}
+
+[data-mode-switch] a[aria-current="page"] {
+    border-block-end-color: var(--pico-primary);
+    color: var(--pico-primary);
+    font-weight: 700;
+}
+
+[data-role-badge="admin"] {
+    color: var(--pico-primary);
+    font-weight: 700;
+}

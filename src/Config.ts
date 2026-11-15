@@ -27,6 +27,8 @@ export interface SplurnkConfig {
     readonly botHandle: string;
     readonly telegramOidcIssuer: string;
     readonly telegramApiOrigin: string;
+    readonly loginTtlSec: number;
+    readonly sessionTtlSec: number;
     readonly secrets: SplurnkSecrets;
 }
 
@@ -110,6 +112,8 @@ export function readConfig(env: Environment = process.env): SplurnkConfig {
         botHandle: readBotHandle("SPLURNK_BOT_HANDLE", env),
         telegramOidcIssuer: readHttpOrigin("SPLURNK_TELEGRAM_OIDC_ISSUER", env),
         telegramApiOrigin: readHttpOrigin("SPLURNK_TELEGRAM_API_ORIGIN", env),
+        loginTtlSec: Knob.integer("SPLURNK_LOGIN_TTL_SEC", 1, env),
+        sessionTtlSec: Knob.integer("SPLURNK_SESSION_TTL_SEC", 1, env),
         secrets,
     });
 }

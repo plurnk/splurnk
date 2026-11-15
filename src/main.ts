@@ -1,14 +1,14 @@
 import { readConfig } from "./Config.ts";
-import SplurnkServer from "./Server.ts";
+import Splurnk from "./Splurnk.ts";
 
 const config = readConfig();
-const server = new SplurnkServer(config);
-const boundUrl = await server.start();
+const app = new Splurnk({ config });
+const boundUrl = await app.start();
 process.stdout.write(`Splurnk listening on ${boundUrl} (origin: ${config.publicOrigin})\n`);
 
 const shutdown = async (signal: string): Promise<void> => {
     process.stdout.write(`Received ${signal}; draining Splurnk...\n`);
-    await server.stop();
+    await app.stop();
     process.exit(0);
 };
 

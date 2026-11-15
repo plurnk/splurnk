@@ -13,7 +13,10 @@
         "verbatimModuleSyntax": true,
         "erasableSyntaxOnly": true,
         "types": ["node"],
-        "lib": ["ESNext"]
+        "lib": ["ESNext"],
+        "paths": {
+            "@possumtech/sqlrite": ["./SqlRite.d.ts"]
+        }
     },
     "include": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
     "exclude": ["node_modules", "dist"]

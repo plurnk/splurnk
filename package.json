@@ -28,29 +28,47 @@
     "files": [
         ".env.defaults",
         "config/plurnk.env",
+        "migrations/**/*.sql",
+        "sql/**/*.sql",
         "dist/**/*",
         "README.md",
         "SPEC.md",
         "LICENSE"
     ],
     "scripts": {
-        "dev": "node --env-file=.env.defaults --env-file-if-exists=.env --env-file-if-exists=.env.local --env-file-if-exists=.env.keys --watch --watch-path=src src/main.ts",
+        "sql:types": "node node_modules/@possumtech/sqlrite/scripts/codegen.js migrations sql",
+        "dev": "npm run build:web && npm run sql:types && node --env-file=.env.defaults --env-file-if-exists=.env --env-file-if-exists=.env.local --env-file-if-exists=.env.keys --watch --watch-path=src --watch-path=sql src/main.ts",
         "start": "node --env-file=.env.defaults --env-file-if-exists=.env --env-file-if-exists=.env.local --env-file-if-exists=.env.keys dist/main.js",
         "build:clean": "rm -rf dist",
+        "build:web": "node scripts/build-web.ts",
         "build:dist": "tsc -p tsconfig.build.json",
-        "build": "npm run build:clean && npm run build:dist",
-        "test:lint": "plurnk-spec-check --allowance scripts/spec-witness-allowance.json && node scripts/check-sql-boundary.ts && tsc --noEmit",
+        "build": "npm run sql:types && npm run build:clean && npm run build:web && npm run build:dist",
+        "test:lint": "npm run sql:types && plurnk-spec-check --allowance scripts/spec-witness-allowance.json && node scripts/check-sql-boundary.ts && tsc --noEmit && tsc -p tsconfig.browser.json && eslint . && otm-lint --check web && stylelint 'web/styles/*.css'",
         "test:unit": "node --env-file=.env.defaults --experimental-test-coverage --test-coverage-include-all '--test-coverage-include=src/**' '--test-coverage-exclude=src/**/*.test.ts' '--test-coverage-exclude=src/main.ts' --test 'src/**/*.test.ts'",
         "test": "npm run build && npm run test:lint && npm run test:unit",
         "prepack": "npm run build",
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "@plurnk/plurnk-meta": "^2.2.2"
+        "@plurnk/plurnk-meta": "^2.2.2",
+        "@possumtech/sqlrite": "^6.6.1",
+        "negotiator": "1.1.0",
+        "oauth4webapi": "3.8.8"
     },
     "devDependencies": {
+        "@eslint/js": "10.0.1",
+        "@fullhuman/postcss-purgecss": "9.1.0",
+        "@picocss/pico": "2.1.1",
         "@plurnk/plurnk-spec-check": "^0.2.1",
+        "@types/negotiator": "0.6.5",
         "@types/node": "^26.6.6",
-        "typescript": "^7.0.2"
+        "eslint": "10.15.0",
+        "eslint-plugin-no-unsanitized": "4.1.5",
+        "globals": "17.14.0",
+        "on_the_money": "0.12.0",
+        "stylelint": "18.0.0",
+        "stylelint-config-standard": "41.0.0",
+        "typescript": "^7.0.2",
+        "vite": "8.3.8"
     }
 }

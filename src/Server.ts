@@ -3,16 +3,9 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { SplurnkConfig } from "./Config.ts";
+import HttpError, { PROBLEM_TYPE_PREFIX, type ProblemDetails } from "./HttpError.ts";
 
-const PROBLEM_TYPE_PREFIX = "https://problems.plurnk.xyz/splurnk";
-
-export interface ProblemDetails {
-    readonly type: string;
-    readonly title: string;
-    readonly status: number;
-    readonly detail?: string;
-    readonly retryable?: boolean;
-}
+export type { ProblemDetails };
 
 export type RouteHandler = (req: IncomingMessage, res: ServerResponse) => Promise<boolean> | boolean;
 
@@ -196,8 +189,12 @@ export default class SplurnkServer {
             if (this.#route !== null && (await this.#route(req, res))) {
                 return;
             }
-        } catch {
+        } catch (error) {
             if (!res.headersSent) {
+                if (error instanceof HttpError) {
+                    writeProblem(res, method, error.toProblem(), error.headers);
+                    return;
+                }
                 writeProblem(res, method, {
                     type: `${PROBLEM_TYPE_PREFIX}/request-failed`,
                     title: "Internal Server Error",
