@@ -27,7 +27,11 @@ cp .env.example .env.keys
 chmod 600 .env.keys
 ```
 
-To enable web sign-in (`{§splurnk-identity-oidc}`), register `<SPLURNK_PUBLIC_ORIGIN>/auth/callback` under **Bot Settings → Web Login** in `@BotFather` and place `TELEGRAM_OIDC_CLIENT_ID`, `TELEGRAM_OIDC_CLIENT_SECRET`, and a random `SPLURNK_SESSION_SECRET` in `.env.keys`.
+To enable web sign-in (`{§splurnk-identity-oidc}`) and Telegram group enrollment (`{§splurnk-chat-seam}`):
+
+1. Register `<SPLURNK_PUBLIC_ORIGIN>/auth/callback` under **Bot Settings → Web Login** in `@BotFather`, and place `TELEGRAM_OIDC_CLIENT_ID`, `TELEGRAM_OIDC_CLIENT_SECRET`, `TELEGRAM_BOT_TOKEN`, and a random `SPLURNK_SESSION_SECRET` in `.env.keys`.
+2. Toggle `/setprivacy` → **Disable** in `@BotFather` so Telegram delivers plain `@<SPLURNK_BOT_HANDLE>` mentions even when the bot is not promoted to group administrator (Splurnk strictly discards all group messages that lack an explicit `@<SPLURNK_BOT_HANDLE>` mention or command).
+3. Set `SPLURNK_TELEGRAM_SET_WEBHOOK=1` on the public instance that owns webhook delivery (`<SPLURNK_PUBLIC_ORIGIN>/webhooks/telegram`).
 
 Validate the dedicated Plurnk daemon configuration against an installed `plurnk-service`:
 

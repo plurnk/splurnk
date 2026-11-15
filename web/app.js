@@ -1,4 +1,5 @@
-// {§splurnk-identity-oidc} Progressive OTM enhancement for Tasks <-> Chat view switching.
+// {§splurnk-identity-oidc} {§splurnk-chat-seam}
+// Progressive OTM enhancement for Tasks <-> Chat view switching while preserving room scope.
 import { $$, route, the } from "on_the_money";
 
 await the.boot({
@@ -19,6 +20,13 @@ if (the("auth-state") === "signed-in") {
                 } else {
                     link.removeAttribute("aria-current");
                 }
+            }
+            for (const roomLink of $$("[data-room-link]")) {
+                const href = roomLink.getAttribute("href");
+                if (!href) continue;
+                const nextUrl = new URL(href, location.origin);
+                nextUrl.searchParams.set("view", activeView);
+                roomLink.setAttribute("href", `${nextUrl.pathname}${nextUrl.search}`);
             }
         },
         { match: "[data-route]", initial: false },

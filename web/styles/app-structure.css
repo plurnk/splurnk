@@ -1,4 +1,4 @@
-/* {§splurnk-http-lifecycle} {§splurnk-identity-oidc} Structural shell layout and responsive gutters. */
+/* {§splurnk-http-lifecycle} {§splurnk-identity-oidc} {§splurnk-chat-seam} Structural shell layout and responsive gutters. */
 body > header,
 body > main,
 body > footer {
@@ -100,6 +100,35 @@ body > main {
     padding-block: var(--pico-block-spacing-vertical) calc(var(--pico-block-spacing-vertical) + env(safe-area-inset-bottom, 0px));
 }
 
+[data-room-switcher] {
+    margin-block-end: var(--pico-spacing);
+}
+
+[data-room-switcher] > :where(ul) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(var(--pico-spacing) * 0.5);
+    margin: 0;
+    padding: 0;
+}
+
+[data-room-switcher] :where(li) {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+[data-room-link] {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4ch;
+    padding: 0.25rem 0.65rem;
+    border: var(--pico-border-width) solid var(--pico-muted-border-color);
+    border-radius: var(--pico-border-radius);
+    text-decoration: none;
+}
+
 [data-room-list] {
     display: grid;
     gap: calc(var(--pico-spacing) * 0.75);
@@ -119,6 +148,37 @@ body > main {
     align-items: center;
     justify-content: space-between;
     gap: calc(var(--pico-spacing) * 0.5);
+}
+
+[data-roster-list] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(var(--pico-spacing) * 0.5);
+    margin: calc(var(--pico-spacing) * 0.5) 0;
+    padding: 0;
+}
+
+[data-roster-list] > :where(li) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4ch;
+    list-style: none;
+    margin: 0;
+    padding: 0.2rem 0.5rem;
+    border: var(--pico-border-width) solid var(--pico-muted-border-color);
+    border-radius: var(--pico-border-radius);
+}
+
+[data-inline-form] {
+    margin: calc(var(--pico-spacing) * 0.5) 0 0;
+}
+
+[data-inline-form] > :where(button) {
+    --pico-form-element-spacing-vertical: 0.3rem;
+    --pico-form-element-spacing-horizontal: 0.65rem;
+
+    inline-size: auto;
+    margin: 0;
 }
 
 [data-panel-toolbar] {

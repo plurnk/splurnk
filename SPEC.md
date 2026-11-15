@@ -25,6 +25,8 @@ All non-secret operational defaults live in `.env.defaults` and are read exclusi
 | `SPLURNK_BOT_HANDLE` | `splurnkbot` | Bot handle without `@`, matching `^[A-Za-z][A-Za-z0-9_]{2,31}$`. |
 | `SPLURNK_TELEGRAM_OIDC_ISSUER` | `https://oauth.telegram.org` | Canonical `http:` or `https:` origin. |
 | `SPLURNK_TELEGRAM_API_ORIGIN` | `https://api.telegram.org` | Canonical `http:` or `https:` origin. |
+| `SPLURNK_TELEGRAM_SET_WEBHOOK` | `0` | Boolean flag (`0` / `1`) controlling automatic `setWebhook` registration on startup when `TELEGRAM_BOT_TOKEN` is present. |
+| `SPLURNK_ROOM_VERIFY_TTL_SEC` | `300` | Safe integer `>= 1` seconds between live `ChatAdapter` membership/role re-verifications. |
 | `SPLURNK_LOGIN_TTL_SEC` | `600` | Safe integer `>= 1` seconds (in-flight OIDC login transaction TTL). |
 | `SPLURNK_SESSION_TTL_SEC` | `2592000` | Safe integer `>= 1` seconds (authenticated session TTL). |
 
@@ -60,13 +62,18 @@ Members sign in on the web through Telegram's standard OpenID Connect provider (
 | `GET /auth/callback` | Clears the single-use transaction cookie immediately regardless of outcome, redeems the authorization code via `ClientSecretBasic`, cryptographically verifies the ID Token JWS signature against `jwks_uri` and `nonce` / `aud` / `iss` claims without calling a `UserInfo` endpoint, extracts immutable `sub`, optional `preferred_username`, `name`, and `https:` `picture`, and discards OIDC tokens. Upserts the member in SQLite, revokes any prior session on the request, persists `sha256(sid)` and a per-session CSRF token for `SPLURNK_SESSION_TTL_SEC`, sets `__Host-splurnk_session` (`splurnk_session` under `http:`) at `Path=/`, and redirects `303 See Other` to `returnTo`. |
 | `POST /auth/logout` | Requires same-origin headers (`Origin` / `Sec-Fetch-Site`) and matching `_csrf` form token when a session is active, revokes the persisted session row, clears the session cookie (`Max-Age=0`), and redirects `303 See Other` to `/`. |
 
-## §splurnk-chat-seam Modular chat adapter and Telegram boundary
+## §splurnk-chat-seam Modular chat adapter, Telegram boundary, and room isolation
 
-External chat platforms integrate strictly through a transport-neutral `ChatAdapter` port (#1):
+External chat platforms integrate strictly through a transport-neutral `ChatAdapter` port while enforcing hard per-room tenant boundaries (#1):
 
-- **Group mentions only (`6.B`)**: Splurnk neither monitors nor participates in general group conversation; only messages explicitly tagging `@<SPLURNK_BOT_HANDLE>` dispatch a turn to the room session and reply in the room, alongside explicit outbound room alerts/notifications.
-- **Outbound-only direct messages**: Direct messages from `@<SPLURNK_BOT_HANDLE>` deliver notifications, alerts, and check-ins only; interactive 1:1 chat with `splurnkbot` lives exclusively in the web application (`6.A`).
-- **Room roster & admin discovery**: Room installation events, administrator queries, and verified member enrollment populate `(room, member, role)` state behind `ChatAdapter` (#1).
+| Surface / Event | Contract |
+|---|---|
+| `POST /webhooks/telegram` | Answers `503` (`telegram-unconfigured`) when `TELEGRAM_BOT_TOKEN` is unset, `401` (`unauthorized-webhook`) when `X-Telegram-Bot-Api-Secret-Token` fails constant-time comparison against the HKDF-derived webhook token, and `200 OK` (`{"ok":true}`) on verified updates. When `SPLURNK_TELEGRAM_SET_WEBHOOK=1`, startup registers `${SPLURNK_PUBLIC_ORIGIN}/webhooks/telegram` with `allowed_updates: ["message", "my_chat_member", "chat_member"]`. |
+| Group mentions only (`6.B`) | Group/supergroup messages without an explicit `@<SPLURNK_BOT_HANDLE>` `mention` or `bot_command` entity are discarded without database writes or replies. Tagged messages enroll/refresh the room and sender membership and dispatch to the room handler. |
+| Outbound-only direct messages | Direct messages from `@<SPLURNK_BOT_HANDLE>` deliver notifications, alerts, and check-ins only; inbound private messages never open an AI turn and reply with a static pointer to `SPLURNK_PUBLIC_ORIGIN`. |
+| Room lifecycle & roster sync | `my_chat_member` installation enrolls the room with a deterministic `plurnk_workspace` (`rm-<provider>-<hash>`), mints a 256-bit `join_code`, syncs human admins via `ChatAdapter.listRoomAdmins`, and posts the room join URL; removal deactivates the room; `migrate_to_chat_id` preserves the room across Telegram supergroup upgrades; `chat_member` updates live member roles and revocations. |
+| `GET` / `POST /rooms/join/:joinCode` | `GET` prompts Telegram OIDC sign-in (`?return=/rooms/join/:joinCode`) when signed out or renders a CSRF-protected confirmation form when signed in (`404` on unknown/inactive `joinCode`). `POST` verifies same-origin + `_csrf`, calls `ChatAdapter.verifyRoomMember` live (`403 not-room-member` if absent from the external chat), persists `(room, member, role)`, and redirects `303` to `/?room=<roomId>`. |
+| Multi-room isolation & admin rotation | `GET /?room=<roomId>` answers `404` unless the authenticated member is an active member of that active room (re-verifying via `ChatAdapter.verifyRoomMember` once `SPLURNK_ROOM_VERIFY_TTL_SEC` elapses and revoking access immediately if removed). `POST /rooms/:roomId/rotate-join-link` requires live-verified `admin` role (`404` to non-members, `403 admin-required` to non-admins). |
 
 ## §splurnk-workspace-sessions Group workspaces, peer sessions, and ACPv2 delivery
 

@@ -1,4 +1,4 @@
-// {§splurnk-configuration} {§splurnk-deployment-boundary} {§splurnk-daemon-posture}
+// {§splurnk-configuration} {§splurnk-deployment-boundary} {§splurnk-daemon-posture} {§splurnk-chat-seam}
 // Configuration boundary: every deployment choice lives in .env.defaults and enters
 // exclusively through @plurnk/plurnk-meta Knob with zero reader-local defaults.
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
@@ -27,6 +27,8 @@ export interface SplurnkConfig {
     readonly botHandle: string;
     readonly telegramOidcIssuer: string;
     readonly telegramApiOrigin: string;
+    readonly telegramSetWebhook: boolean;
+    readonly roomVerifyTtlSec: number;
     readonly loginTtlSec: number;
     readonly sessionTtlSec: number;
     readonly secrets: SplurnkSecrets;
@@ -112,6 +114,8 @@ export function readConfig(env: Environment = process.env): SplurnkConfig {
         botHandle: readBotHandle("SPLURNK_BOT_HANDLE", env),
         telegramOidcIssuer: readHttpOrigin("SPLURNK_TELEGRAM_OIDC_ISSUER", env),
         telegramApiOrigin: readHttpOrigin("SPLURNK_TELEGRAM_API_ORIGIN", env),
+        telegramSetWebhook: Knob.flag("SPLURNK_TELEGRAM_SET_WEBHOOK", env),
+        roomVerifyTtlSec: Knob.integer("SPLURNK_ROOM_VERIFY_TTL_SEC", 1, env),
         loginTtlSec: Knob.integer("SPLURNK_LOGIN_TTL_SEC", 1, env),
         sessionTtlSec: Knob.integer("SPLURNK_SESSION_TTL_SEC", 1, env),
         secrets,

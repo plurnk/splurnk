@@ -5,7 +5,12 @@ export {
     type SplurnkConfig,
     type SplurnkSecrets,
 } from "./Config.ts";
-export type { EnrolledRoom, MemberRecord } from "./Database.ts";
+export type {
+    EnrolledRoom,
+    MemberRecord,
+    RoomRecord,
+    RoomRosterMember,
+} from "./Database.ts";
 export { openDatabase } from "./Database.ts";
 export { default as HttpError, PROBLEM_TYPE_PREFIX, type ProblemDetails } from "./HttpError.ts";
 export {
@@ -34,3 +39,25 @@ export {
     profileFromIdToken,
     type TelegramIdentityProviderOptions,
 } from "./auth/TelegramIdentityProvider.ts";
+export type {
+    ChatInboundEvent,
+    ChatParticipantProfile,
+    ChatRoomProfile,
+    ChatRoomRole,
+    default as ChatAdapter,
+    SendMessageOptions,
+} from "./chat/ChatAdapter.ts";
+export {
+    default as TelegramChatAdapter,
+    deriveTelegramWebhookSecret,
+    TELEGRAM_WEBHOOK_PATH,
+    type TelegramChatAdapterOptions,
+} from "./chat/TelegramChatAdapter.ts";
+export {
+    default as RoomCoordinator,
+    derivePlurnkWorkspace,
+    mintRoomJoinCode,
+    type RoomCoordinatorOptions,
+    type RoomMentionContext,
+    type RoomMentionHandler,
+} from "./rooms/RoomCoordinator.ts";
