@@ -262,6 +262,13 @@ export default class SessionManager {
 
         const txCookieName = this.#transactionCookieName(state);
         const sealed = readCookie(req, txCookieName);
+        if (sealed === null) {
+            const existing = await this.authenticate(req);
+            if (existing !== null) {
+                redirectSeeOther(res, "/");
+                return;
+            }
+        }
         const clearedTxCookie = this.#formatCookie(txCookieName, "", "/auth", 0);
         res.setHeader("Set-Cookie", clearedTxCookie);
 
@@ -366,7 +373,6 @@ export default class SessionManager {
             const parsed = JSON.parse(plaintext) as Partial<OidcTransaction>;
             if (
                 typeof parsed.state !== "string" ||
-                typeof parsed.nonce !== "string" ||
                 typeof parsed.codeVerifier !== "string" ||
                 typeof parsed.redirectUri !== "string" ||
                 typeof parsed.returnTo !== "string" ||

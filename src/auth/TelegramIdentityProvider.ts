@@ -1,7 +1,7 @@
 // {§splurnk-identity-oidc} {§splurnk-deployment-boundary}
 // Standard OpenID Connect client for Telegram (https://oauth.telegram.org).
-// Uses Authorization Code + PKCE (S256), state, nonce, ClientSecretBasic, and
-// JWKS signature verification; extracts profile claims directly from the ID Token
+// Uses Authorization Code + PKCE (S256), state, ClientSecretBasic, and JWKS
+// signature verification; extracts profile claims directly from the ID Token
 // (Telegram exposes no UserInfo endpoint) and discards OAuth tokens immediately.
 import * as oauth from "oauth4webapi";
 import HttpError from "../HttpError.ts";
@@ -9,6 +9,8 @@ import type IdentityProvider from "./IdentityProvider.ts";
 import type { AuthorizationBegin, IdentityProfile, OidcTransaction } from "./IdentityProvider.ts";
 
 const USERNAME_PATTERN = /^[A-Za-z0-9_]{1,64}$/u;
+const NUMERIC_ID_PATTERN = /^[1-9]\d{0,19}$/u;
+const TELEGRAM_OIDC_SCOPE = "openid profile telegram:bot_access";
 
 export interface TelegramIdentityProviderOptions {
     readonly issuer: string;
@@ -43,9 +45,9 @@ function optionalTrimmedClaim(claims: Readonly<Record<string, unknown>>, key: st
     return trimmed.length > 0 ? trimmed : null;
 }
 
-export function profileFromIdToken(claims: Readonly<Record<string, unknown>>): IdentityProfile {
-    const subject = optionalTrimmedClaim(claims, "sub");
-    if (subject === null || subject.length > 128) {
+function canonicalTelegramSubject(claims: Readonly<Record<string, unknown>>): string {
+    const sub = optionalTrimmedClaim(claims, "sub");
+    if (sub === null || sub.length > 128) {
         throw new HttpError(
             502,
             "oidc-claims-invalid",
@@ -53,6 +55,65 @@ export function profileFromIdToken(claims: Readonly<Record<string, unknown>>): I
             "Telegram ID token is missing a valid sub claim.",
         );
     }
+
+    const rawId = claims.id;
+    if (rawId === undefined || rawId === null) {
+        return sub;
+    }
+    if (typeof rawId === "number") {
+        if (!Number.isSafeInteger(rawId) || rawId <= 0) {
+            throw new HttpError(
+                502,
+                "oidc-claims-invalid",
+                "Bad Gateway",
+                "Telegram ID token returned an invalid numeric id claim.",
+            );
+        }
+        return String(rawId);
+    }
+    if (typeof rawId === "string") {
+        const trimmedId = rawId.trim();
+        if (!NUMERIC_ID_PATTERN.test(trimmedId)) {
+            throw new HttpError(
+                502,
+                "oidc-claims-invalid",
+                "Bad Gateway",
+                "Telegram ID token returned an invalid string id claim.",
+            );
+        }
+        return trimmedId;
+    }
+    throw new HttpError(
+        502,
+        "oidc-claims-invalid",
+        "Bad Gateway",
+        "Telegram ID token returned an unsupported id claim type.",
+    );
+}
+
+function isInvalidGrantError(cause: unknown): boolean {
+    if (cause instanceof oauth.ResponseBodyError && cause.error === "invalid_grant") {
+        return true;
+    }
+    if (cause instanceof oauth.OperationProcessingError) {
+        const inner = cause.cause;
+        if (
+            typeof inner === "object" &&
+            inner !== null &&
+            "body" in inner &&
+            typeof inner.body === "object" &&
+            inner.body !== null &&
+            "error" in inner.body &&
+            inner.body.error === "invalid_grant"
+        ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+export function profileFromIdToken(claims: Readonly<Record<string, unknown>>): IdentityProfile {
+    const subject = canonicalTelegramSubject(claims);
 
     const rawUsername = optionalTrimmedClaim(claims, "preferred_username");
     let username: string | null = null;
@@ -148,7 +209,6 @@ export default class TelegramIdentityProvider implements IdentityProvider {
         }
 
         const state = oauth.generateRandomState();
-        const nonce = oauth.generateRandomNonce();
         const codeVerifier = oauth.generateRandomCodeVerifier();
         const codeChallenge = await oauth.calculatePKCECodeChallenge(codeVerifier);
 
@@ -157,18 +217,16 @@ export default class TelegramIdentityProvider implements IdentityProvider {
             client_id: this.#client.client_id,
             redirect_uri: this.#redirectUri,
             response_type: "code",
-            scope: "openid profile",
+            scope: TELEGRAM_OIDC_SCOPE,
             code_challenge_method: "S256",
             code_challenge: codeChallenge,
             state,
-            nonce,
         }).toString();
 
         return {
             authorizationUrl,
             transaction: {
                 state,
-                nonce,
                 codeVerifier,
                 redirectUri: this.#redirectUri,
                 returnTo,
@@ -217,11 +275,10 @@ export default class TelegramIdentityProvider implements IdentityProvider {
         let tokenResult: oauth.TokenEndpointResponse;
         try {
             tokenResult = await oauth.processAuthorizationCodeResponse(server, this.#client, tokenResponse, {
-                expectedNonce: transaction.nonce,
                 requireIdToken: true,
             });
         } catch (cause) {
-            if (cause instanceof oauth.ResponseBodyError && cause.error === "invalid_grant") {
+            if (isInvalidGrantError(cause)) {
                 throw new HttpError(
                     400,
                     "oidc-grant-invalid",

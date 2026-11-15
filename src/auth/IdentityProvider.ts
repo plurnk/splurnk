@@ -9,7 +9,6 @@ export interface IdentityProfile {
 
 export interface OidcTransaction {
     readonly state: string;
-    readonly nonce: string;
     readonly codeVerifier: string;
     readonly redirectUri: string;
     readonly returnTo: string;

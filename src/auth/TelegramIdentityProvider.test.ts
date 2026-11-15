@@ -26,26 +26,28 @@ function signJwt(payload: Record<string, unknown>, privateKey = RSA_KEYS.private
 }
 
 describe("TelegramIdentityProvider", () => {
-    test("{§splurnk-identity-oidc} profileFromIdToken handles Telegram claims with optional username and rejects invalid fields", () => {
-        const full = profileFromIdToken({
-            sub: "424242",
+    test("{§splurnk-identity-oidc} profileFromIdToken resolves canonical Telegram user id, optional username, and rejects invalid fields", () => {
+        const withNumericId = profileFromIdToken({
+            sub: "1234123412341234123",
+            id: 424242,
             preferred_username: "@wikitopian",
             name: "Hyzen Operator",
             picture: "https://t.me/i/userpic/320/hyzen.jpg",
         });
-        assert.deepEqual(full, {
+        assert.deepEqual(withNumericId, {
             subject: "424242",
             username: "wikitopian",
             displayName: "Hyzen Operator",
             avatarUrl: "https://t.me/i/userpic/320/hyzen.jpg",
         });
 
-        const noUsername = profileFromIdToken({
-            sub: "9001",
+        const withStringId = profileFromIdToken({
+            sub: "opaque-sub-9001",
+            id: "9001",
             given_name: "Ada",
             family_name: "Lovelace",
         });
-        assert.deepEqual(noUsername, {
+        assert.deepEqual(withStringId, {
             subject: "9001",
             username: null,
             displayName: "Ada Lovelace",
@@ -56,11 +58,17 @@ describe("TelegramIdentityProvider", () => {
             sub: "9002",
             preferred_username: "ada_bot",
         });
+        assert.equal(usernameOnly.subject, "9002");
         assert.equal(usernameOnly.displayName, "ada_bot");
 
         for (const badClaims of [
             {},
             { sub: 12345, name: "Numeric Sub" },
+            { sub: "1", id: 0, name: "Zero Id" },
+            { sub: "1", id: -5, name: "Negative Id" },
+            { sub: "1", id: 1.5, name: "Float Id" },
+            { sub: "1", id: "not-digits", name: "Bad String Id" },
+            { sub: "1", id: true, name: "Boolean Id" },
             { sub: "1", preferred_username: "not valid handle!", name: "Bad Handle" },
             { sub: "1" },
             { sub: "1", name: "Bad Pic", picture: "not-a-url" },
@@ -73,11 +81,10 @@ describe("TelegramIdentityProvider", () => {
         }
     });
 
-    test("{§splurnk-identity-oidc} executes Authorization Code + PKCE S256 + nonce + JWKS verification without calling UserInfo", async () => {
+    test("{§splurnk-identity-oidc} executes Authorization Code + PKCE S256 + JWKS verification without calling UserInfo and maps HTTP 200/400 invalid_grant", async () => {
         const issuer = "https://oauth.telegram.example";
         const redirectUri = "https://splurnk.example/auth/callback";
         let capturedChallenge = "";
-        let capturedNonce = "";
         let redeemedCount = 0;
         let userInfoCalled = false;
 
@@ -89,16 +96,13 @@ describe("TelegramIdentityProvider", () => {
                     authorization_endpoint: `${issuer}/auth`,
                     token_endpoint: `${issuer}/token`,
                     jwks_uri: `${issuer}/.well-known/jwks.json`,
-                    id_token_signing_alg_values_supported: ["RS256", "ES256K"],
+                    id_token_signing_alg_values_supported: ["RS256"],
                     code_challenge_methods_supported: ["S256"],
                 });
             }
             if (url.pathname === "/.well-known/jwks.json") {
                 return Response.json({
-                    keys: [
-                        PUBLIC_JWK,
-                        { kty: "EC", alg: "ES256K", use: "sig", kid: "oidc-es256k-1" },
-                    ],
+                    keys: [PUBLIC_JWK],
                 });
             }
             if (url.pathname === "/userinfo") {
@@ -120,18 +124,23 @@ describe("TelegramIdentityProvider", () => {
                 const recomputed = await oauth.calculatePKCECodeChallenge(verifier);
                 assert.equal(recomputed, capturedChallenge);
 
-                if (redeemedCount++ > 0) {
+                const callIndex = redeemedCount++;
+                if (callIndex === 1) {
+                    // Live oauth.telegram.org/token returns HTTP 200 on invalid_grant.
+                    return Response.json({ error: "invalid_grant" }, { status: 200 });
+                }
+                if (callIndex > 1) {
                     return Response.json({ error: "invalid_grant" }, { status: 400 });
                 }
 
                 const nowSec = Math.floor(Date.now() / 1000);
                 const idToken = signJwt({
                     iss: issuer,
-                    sub: "777888999",
+                    sub: "opaque-subject-777888999",
+                    id: 777888999,
                     aud: "client-123",
                     iat: nowSec,
                     exp: nowSec + 300,
-                    nonce: capturedNonce,
                     name: "Grace Hopper",
                     preferred_username: "ghopper",
                     picture: "https://t.me/i/userpic/320/grace.jpg",
@@ -157,10 +166,21 @@ describe("TelegramIdentityProvider", () => {
         const began = await provider.begin("/?view=chat", Date.now() + 60_000);
         assert.equal(began.authorizationUrl.origin, issuer);
         assert.equal(began.authorizationUrl.pathname, "/auth");
-        assert.equal(began.authorizationUrl.searchParams.get("scope"), "openid profile");
+        assert.equal(
+            began.authorizationUrl.searchParams.get("scope"),
+            "openid profile telegram:bot_access",
+        );
+        assert.deepEqual([...began.authorizationUrl.searchParams.keys()].toSorted(), [
+            "client_id",
+            "code_challenge",
+            "code_challenge_method",
+            "redirect_uri",
+            "response_type",
+            "scope",
+            "state",
+        ]);
         assert.equal(began.authorizationUrl.searchParams.get("code_challenge_method"), "S256");
         capturedChallenge = began.authorizationUrl.searchParams.get("code_challenge") ?? "";
-        capturedNonce = began.transaction.nonce;
 
         const callbackUrl = new URL(
             `${redirectUri}?code=one-time-code&state=${encodeURIComponent(began.transaction.state)}`,
@@ -174,14 +194,16 @@ describe("TelegramIdentityProvider", () => {
             avatarUrl: "https://t.me/i/userpic/320/grace.jpg",
         });
 
-        // Replaying the redeemed code maps invalid_grant cleanly to 400.
-        await assert.rejects(
-            () => provider.finish(callbackUrl, began.transaction),
-            (err: unknown) =>
-                err instanceof HttpError &&
-                err.status === 400 &&
-                err.problemSlug === "oidc-grant-invalid",
-        );
+        // Replaying the redeemed code maps both HTTP 200 and HTTP 400 invalid_grant cleanly to 400.
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            await assert.rejects(
+                () => provider.finish(callbackUrl, began.transaction),
+                (err: unknown) =>
+                    err instanceof HttpError &&
+                    err.status === 400 &&
+                    err.problemSlug === "oidc-grant-invalid",
+            );
+        }
 
         // Mismatched callback state maps cleanly to 400.
         await assert.rejects(
@@ -202,7 +224,6 @@ describe("TelegramIdentityProvider", () => {
         const redirectUri = "https://splurnk.example/auth/callback";
         const rogueKeys = generateKeyPairSync("rsa", { modulusLength: 2048 });
         let failDiscovery = true;
-        let expectedNonce = "";
 
         const provider = new TelegramIdentityProvider({
             issuer,
@@ -233,7 +254,6 @@ describe("TelegramIdentityProvider", () => {
                         aud: "client-123",
                         iat: nowSec,
                         exp: nowSec + 300,
-                        nonce: expectedNonce,
                         name: "Forged",
                     },
                     rogueKeys.privateKey,
@@ -256,7 +276,6 @@ describe("TelegramIdentityProvider", () => {
 
         failDiscovery = false;
         const began = await provider.begin("/", Date.now() + 60_000);
-        expectedNonce = began.transaction.nonce;
 
         await assert.rejects(
             () =>

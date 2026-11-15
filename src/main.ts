@@ -2,7 +2,12 @@ import { readConfig } from "./Config.ts";
 import Splurnk from "./Splurnk.ts";
 
 const config = readConfig();
-const app = new Splurnk({ config });
+const app = new Splurnk({
+    config,
+    onDiagnostic(event) {
+        process.stderr.write(`${JSON.stringify(event)}\n`);
+    },
+});
 const boundUrl = await app.start();
 process.stdout.write(`Splurnk listening on ${boundUrl} (origin: ${config.publicOrigin})\n`);
 
