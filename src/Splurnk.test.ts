@@ -62,7 +62,10 @@ async function startMockOidcServer(getProfile: () => MockOidcProfile): Promise<{
                 chunks.push(Buffer.from(chunk as Uint8Array));
             }
             const form = new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
-            if (form.get("client_id") !== "splurnk-client") {
+            if (
+                form.get("client_id") !== "splurnk-client" ||
+                form.get("client_secret") !== "splurnk-secret"
+            ) {
                 res.writeHead(200, { "Content-Type": "application/json" });
                 res.end(JSON.stringify({ error: "invalid_client" }));
                 return;

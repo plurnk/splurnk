@@ -1,6 +1,6 @@
 // {§splurnk-identity-oidc} {§splurnk-deployment-boundary}
 // Standard OpenID Connect client for Telegram (https://oauth.telegram.org).
-// Uses Authorization Code + PKCE (S256), state, ClientSecretBasic, and JWKS
+// Uses Authorization Code + PKCE (S256), state, ClientSecretPost, and JWKS
 // signature verification; extracts profile claims directly from the ID Token
 // (Telegram exposes no UserInfo endpoint) and discards OAuth tokens immediately.
 import * as oauth from "oauth4webapi";
@@ -249,7 +249,7 @@ export default class TelegramIdentityProvider implements IdentityProvider {
     constructor(options: TelegramIdentityProviderOptions) {
         this.#issuer = new URL(options.issuer);
         this.#client = { client_id: options.clientId };
-        this.#authenticate = oauth.ClientSecretBasic(options.clientSecret);
+        this.#authenticate = oauth.ClientSecretPost(options.clientSecret);
         this.#redirectUri = options.redirectUri;
         this.#fetchImpl = options.fetchImpl;
     }
@@ -317,12 +317,7 @@ export default class TelegramIdentityProvider implements IdentityProvider {
                 callbackParams,
                 transaction.redirectUri,
                 transaction.codeVerifier,
-                {
-                    ...requestOptions,
-                    additionalParameters: {
-                        client_id: this.#client.client_id,
-                    },
-                },
+                requestOptions,
             );
         } catch (cause) {
             throw new HttpError(

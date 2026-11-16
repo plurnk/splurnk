@@ -18,7 +18,11 @@ export default defineConfig(({ command }) => ({
                                   fileURLToPath(new URL("./src/Documents.ts", import.meta.url)),
                               ],
                               defaultExtractor: (content) => content.match(/[A-Za-z0-9_-]+/gu) ?? [],
-                              safelist: { standard: [/^:/u], deep: [/aria-/u, /data-/u] },
+                              safelist: {
+                                  standard: [/^:/u],
+                                  deep: [/aria-/u, /data-/u],
+                                  variables: [/^--(?:pico|splurnk)-/u],
+                              },
                               variables: true,
                               keyframes: true,
                           }),
