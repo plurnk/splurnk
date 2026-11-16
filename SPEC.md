@@ -8,7 +8,7 @@ Splurnk ships as a single MIT-licensed package (`@plurnk/splurnk`) that operates
 |---|---|
 | Origin & bot neutrality | Public origin (`SPLURNK_PUBLIC_ORIGIN`), bot handle (`SPLURNK_BOT_HANDLE`), OIDC issuer (`SPLURNK_TELEGRAM_OIDC_ISSUER`), chat API origin (`SPLURNK_TELEGRAM_API_ORIGIN`), database path (`SPLURNK_DB_PATH`), and Plurnk endpoint (`SPLURNK_PLURNK_URL`) come exclusively from configuration ({§splurnk-configuration}), never hardcoded domain or bot literals. |
 | Origin validation | `SPLURNK_PUBLIC_ORIGIN`, `SPLURNK_PLURNK_URL`, `SPLURNK_TELEGRAM_OIDC_ISSUER`, and `SPLURNK_TELEGRAM_API_ORIGIN` must be valid `http:` or `https:` URLs with no credentials, query string, hash, or trailing path segments beyond origin (`ConfigurationError` on malformed input). |
-| Daemon separation | Splurnk's default Plurnk endpoint (`http://127.0.0.1:1067`) is distinct from an operator's personal Plurnk daemon (`127.0.0.1:1066`), and deployments isolate daemon persistence via `PLURNK_SERVICE_STATE_ROOT` ({§splurnk-daemon-posture}). |
+| Daemon separation | Splurnk's default Plurnk endpoint (`http://127.0.0.1:1067`) is distinct from an operator's personal Plurnk daemon (`127.0.0.1:1066`); `SPLURNK_PORT`, `SPLURNK_PLURNK_URL`, and `PLURNK_PORT` refuse port `1066` (`ConfigurationError`), and deployments isolate daemon persistence via `PLURNK_SERVICE_STATE_ROOT` ({§splurnk-daemon-posture}). |
 
 ## §splurnk-configuration Configuration floor and secret perimeter
 

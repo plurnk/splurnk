@@ -104,13 +104,29 @@ export function readConfig(env: Environment = process.env): SplurnkConfig {
         plurnkSecret: readOptionalSecret("PLURNK_SECRET", env),
     });
 
+    const port = readPort("SPLURNK_PORT", env);
+    if (port === OPERATOR_DAEMON_PORT) {
+        throw new ConfigurationError(
+            "SPLURNK_PORT",
+            `SPLURNK_PORT must never bind operator daemon port ${OPERATOR_DAEMON_PORT}.`,
+        );
+    }
+
+    const plurnkUrl = readHttpOrigin("SPLURNK_PLURNK_URL", env);
+    if (new URL(plurnkUrl).port === String(OPERATOR_DAEMON_PORT)) {
+        throw new ConfigurationError(
+            "SPLURNK_PLURNK_URL",
+            `SPLURNK_PLURNK_URL must target a dedicated Plurnk daemon, never operator port ${OPERATOR_DAEMON_PORT}.`,
+        );
+    }
+
     return Object.freeze({
         host: readRequiredText("SPLURNK_HOST", env),
-        port: readPort("SPLURNK_PORT", env),
+        port,
         publicOrigin: readHttpOrigin("SPLURNK_PUBLIC_ORIGIN", env),
         stopTimeoutMs: Knob.integer("SPLURNK_STOP_TIMEOUT_MS", 1, env),
         dbPath: readRequiredText("SPLURNK_DB_PATH", env),
-        plurnkUrl: readHttpOrigin("SPLURNK_PLURNK_URL", env),
+        plurnkUrl,
         botHandle: readBotHandle("SPLURNK_BOT_HANDLE", env),
         telegramOidcIssuer: readHttpOrigin("SPLURNK_TELEGRAM_OIDC_ISSUER", env),
         telegramApiOrigin: readHttpOrigin("SPLURNK_TELEGRAM_API_ORIGIN", env),
