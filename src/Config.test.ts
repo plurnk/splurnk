@@ -79,6 +79,14 @@ describe("Config", () => {
             (error: unknown) => error instanceof ConfigurationError && error.key === "SPLURNK_PORT",
         );
         assert.throws(
+            () => readConfig({ ...BASE_ENV, SPLURNK_PORT: "1066" }),
+            (error: unknown) => error instanceof ConfigurationError && error.key === "SPLURNK_PORT",
+        );
+        assert.throws(
+            () => readConfig({ ...BASE_ENV, SPLURNK_PLURNK_URL: "http://127.0.0.1:1066" }),
+            (error: unknown) => error instanceof ConfigurationError && error.key === "SPLURNK_PLURNK_URL",
+        );
+        assert.throws(
             () => readConfig({ ...BASE_ENV, SPLURNK_PUBLIC_ORIGIN: "not a url" }),
             (error: unknown) => error instanceof ConfigurationError && error.key === "SPLURNK_PUBLIC_ORIGIN",
         );
