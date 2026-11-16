@@ -62,6 +62,11 @@ async function startMockOidcServer(getProfile: () => MockOidcProfile): Promise<{
                 chunks.push(Buffer.from(chunk as Uint8Array));
             }
             const form = new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
+            if (form.get("client_id") !== "splurnk-client") {
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: "invalid_client" }));
+                return;
+            }
             if (form.get("code") === "bad-code") {
                 // Live oauth.telegram.org/token answers HTTP 200 on invalid_grant.
                 res.writeHead(200, { "Content-Type": "application/json" });
@@ -91,9 +96,6 @@ async function startMockOidcServer(getProfile: () => MockOidcProfile): Promise<{
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(
                 JSON.stringify({
-                    access_token: "ephemeral-access-token",
-                    token_type: "Bearer",
-                    expires_in: 300,
                     id_token: `${header}.${claims}.${sig}`,
                 }),
             );

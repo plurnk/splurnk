@@ -91,25 +91,82 @@ function canonicalTelegramSubject(claims: Readonly<Record<string, unknown>>): st
     );
 }
 
-function isInvalidGrantError(cause: unknown): boolean {
-    if (cause instanceof oauth.ResponseBodyError && cause.error === "invalid_grant") {
-        return true;
+async function normalizeTokenEndpointResponse(rawResponse: Response): Promise<Response> {
+    let payload: unknown;
+    try {
+        payload = await rawResponse.json();
+    } catch (cause) {
+        throw new HttpError(
+            502,
+            "oidc-upstream-failed",
+            "Bad Gateway",
+            "Telegram token endpoint returned malformed JSON.",
+            { cause },
+        );
     }
-    if (cause instanceof oauth.OperationProcessingError) {
-        const inner = cause.cause;
-        if (
-            typeof inner === "object" &&
-            inner !== null &&
-            "body" in inner &&
-            typeof inner.body === "object" &&
-            inner.body !== null &&
-            "error" in inner.body &&
-            inner.body.error === "invalid_grant"
-        ) {
-            return true;
+
+    if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+        throw new HttpError(
+            502,
+            "oidc-upstream-failed",
+            "Bad Gateway",
+            "Telegram token endpoint returned an invalid response object.",
+        );
+    }
+
+    const record = payload as Record<string, unknown>;
+    if (typeof record.error === "string" && record.error.length > 0) {
+        if (record.error === "invalid_grant") {
+            throw new HttpError(
+                400,
+                "oidc-grant-invalid",
+                "Bad Request",
+                "Sign-in was not completed. Start sign-in again.",
+            );
         }
+        const desc =
+            typeof record.error_description === "string" && record.error_description.length > 0
+                ? ` (${record.error_description.slice(0, 120)})`
+                : "";
+        throw new HttpError(
+            502,
+            "oidc-upstream-failed",
+            "Bad Gateway",
+            "Telegram did not complete authentication.",
+            { cause: new Error(`OAuth token error (${rawResponse.status}): ${record.error}${desc}`) },
+        );
     }
-    return false;
+
+    if (rawResponse.status !== 200 || typeof record.id_token !== "string" || record.id_token.length === 0) {
+        const keys = Object.keys(record).slice(0, 8).join(",");
+        throw new HttpError(
+            502,
+            "oidc-upstream-failed",
+            "Bad Gateway",
+            "Telegram did not complete authentication.",
+            {
+                cause: new Error(
+                    `OAuth token response (${rawResponse.status}) missing id_token [keys=${keys}]`,
+                ),
+            },
+        );
+    }
+
+    // Telegram OIDC issues an ID Token without a UserInfo/resource API; synthesize unused
+    // OAuth bearer fields when omitted so oauth4webapi validates the ID Token JWS + claims.
+    const normalizedBody: Record<string, unknown> = {
+        ...record,
+        access_token:
+            typeof record.access_token === "string" && record.access_token.length > 0
+                ? record.access_token
+                : "oidc-id-token-only",
+        token_type:
+            typeof record.token_type === "string" && record.token_type.length > 0
+                ? record.token_type
+                : "Bearer",
+    };
+
+    return Response.json(normalizedBody, { status: 200 });
 }
 
 export function profileFromIdToken(claims: Readonly<Record<string, unknown>>): IdentityProfile {
@@ -251,16 +308,21 @@ export default class TelegramIdentityProvider implements IdentityProvider {
             );
         }
 
-        let tokenResponse: Response;
+        let rawTokenResponse: Response;
         try {
-            tokenResponse = await oauth.authorizationCodeGrantRequest(
+            rawTokenResponse = await oauth.authorizationCodeGrantRequest(
                 server,
                 this.#client,
                 this.#authenticate,
                 callbackParams,
                 transaction.redirectUri,
                 transaction.codeVerifier,
-                requestOptions,
+                {
+                    ...requestOptions,
+                    additionalParameters: {
+                        client_id: this.#client.client_id,
+                    },
+                },
             );
         } catch (cause) {
             throw new HttpError(
@@ -272,21 +334,14 @@ export default class TelegramIdentityProvider implements IdentityProvider {
             );
         }
 
+        const tokenResponse = await normalizeTokenEndpointResponse(rawTokenResponse);
+
         let tokenResult: oauth.TokenEndpointResponse;
         try {
             tokenResult = await oauth.processAuthorizationCodeResponse(server, this.#client, tokenResponse, {
                 requireIdToken: true,
             });
         } catch (cause) {
-            if (isInvalidGrantError(cause)) {
-                throw new HttpError(
-                    400,
-                    "oidc-grant-invalid",
-                    "Bad Request",
-                    "Sign-in was not completed. Start sign-in again.",
-                    { cause },
-                );
-            }
             throw new HttpError(
                 502,
                 "oidc-upstream-failed",
