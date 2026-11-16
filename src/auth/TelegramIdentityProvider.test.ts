@@ -119,6 +119,7 @@ describe("TelegramIdentityProvider", () => {
                 assert.deepEqual(decodedCreds, ["client-123", "secret-xyz"]);
                 const body = new URLSearchParams(String(init?.body ?? ""));
                 assert.equal(body.get("grant_type"), "authorization_code");
+                assert.equal(body.get("client_id"), "client-123");
                 assert.equal(body.get("redirect_uri"), redirectUri);
                 const verifier = body.get("code_verifier") ?? "";
                 const recomputed = await oauth.calculatePKCECodeChallenge(verifier);
@@ -129,8 +130,17 @@ describe("TelegramIdentityProvider", () => {
                     // Live oauth.telegram.org/token returns HTTP 200 on invalid_grant.
                     return Response.json({ error: "invalid_grant" }, { status: 200 });
                 }
-                if (callIndex > 1) {
+                if (callIndex === 2) {
                     return Response.json({ error: "invalid_grant" }, { status: 400 });
+                }
+                if (callIndex === 3) {
+                    return Response.json(
+                        { error: "invalid_client", error_description: "Client secret mismatch" },
+                        { status: 200 },
+                    );
+                }
+                if (callIndex > 3) {
+                    return Response.json({ unexpected: true }, { status: 200 });
                 }
 
                 const nowSec = Math.floor(Date.now() / 1000);
@@ -145,10 +155,8 @@ describe("TelegramIdentityProvider", () => {
                     preferred_username: "ghopper",
                     picture: "https://t.me/i/userpic/320/grace.jpg",
                 });
+                // Omit access_token & token_type to verify id_token-only responses succeed.
                 return Response.json({
-                    access_token: "discard-me-access-token",
-                    token_type: "Bearer",
-                    expires_in: 300,
                     id_token: idToken,
                 });
             }
@@ -202,6 +210,17 @@ describe("TelegramIdentityProvider", () => {
                     err instanceof HttpError &&
                     err.status === 400 &&
                     err.problemSlug === "oidc-grant-invalid",
+            );
+        }
+
+        // Non-grant OAuth error codes and missing id_token bodies map to 502 oidc-upstream-failed.
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            await assert.rejects(
+                () => provider.finish(callbackUrl, began.transaction),
+                (err: unknown) =>
+                    err instanceof HttpError &&
+                    err.status === 502 &&
+                    err.problemSlug === "oidc-upstream-failed",
             );
         }
 
