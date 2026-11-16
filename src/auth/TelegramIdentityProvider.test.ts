@@ -110,16 +110,11 @@ describe("TelegramIdentityProvider", () => {
                 return new Response("Not Found", { status: 404 });
             }
             if (url.pathname === "/token") {
-                const authHeader = new Headers(init?.headers).get("authorization") ?? "";
-                assert.match(authHeader, /^Basic /u);
-                const decodedCreds = Buffer.from(authHeader.slice("Basic ".length), "base64")
-                    .toString("utf8")
-                    .split(":")
-                    .map((part) => decodeURIComponent(part));
-                assert.deepEqual(decodedCreds, ["client-123", "secret-xyz"]);
+                assert.equal(new Headers(init?.headers).get("authorization"), null);
                 const body = new URLSearchParams(String(init?.body ?? ""));
                 assert.equal(body.get("grant_type"), "authorization_code");
                 assert.equal(body.get("client_id"), "client-123");
+                assert.equal(body.get("client_secret"), "secret-xyz");
                 assert.equal(body.get("redirect_uri"), redirectUri);
                 const verifier = body.get("code_verifier") ?? "";
                 const recomputed = await oauth.calculatePKCECodeChallenge(verifier);
